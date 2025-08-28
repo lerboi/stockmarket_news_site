@@ -1,0 +1,24 @@
+1. Data Collection Methods
+a. PR/News Data
+
+News APIs:
+
+NewsAPI or GDELT are excellent for aggregating global news sources. These APIs allow you to filter news by keywords, topics, and time periods, which is ideal for penny stock traders looking for financial and market news.
+
+PRNewswire API: If you want to get press releases specifically related to stocks or companies, PRNewswire offers an API to access their press releases.
+
+RSS Feeds: Many news websites, especially financial platforms, provide RSS feeds for market news. You can subscribe to these feeds and pull the data in regularly.
+
+Scraping: If APIs are not available for your targeted sources, web scraping becomes an option. Use tools like BeautifulSoup or Scrapy to scrape the headlines, summaries, and links of the news.
+
+b. FDA Filings
+
+FDA API: The FDA has an API that allows you to access drug approval filings, clinical trials, and other key information. You can set up a recurring job to fetch the latest FDA updates, such as approval announcements or clinical trial results.
+
+RSS Feeds: The FDA also provides RSS feeds that update you on the latest news for specific drug categories or approvals.
+
+c. SEC Filings
+
+EDGAR API: The EDGAR database provides SEC filings data, including annual reports, quarterly reports, and insider transactions. The SEC offers an API to allow you to automate the fetching of filings like 8-K, 10-K, 13-D, etc.
+
+RSS Feeds: The SEC provides an RSS feed for new filings, allowing you to monitor real-time updates on specific company filings.
