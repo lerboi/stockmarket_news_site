@@ -107,3 +107,17 @@ Got it! Here's an updated wireframe for your MVP that puts the focus more on the
 4. **User Testing**: Test the interface with real traders to ensure they find the most relevant news first and can quickly make decisions based on the summaries.
 
 This layout focuses entirely on delivering the most relevant news with clear, actionable insights for your users. Let me know if you'd like to refine any details further!
+
+
+
+
+
+
+
+
+
+I plan to build a SaaS platform that delivers filtered, actionable market news and insights for active traders and investors, starting with penny stocks and eventually scalable to the broader market. Retail traders today face an overwhelming flood of press releases, SEC filings, FDA filings, and general market news, most of which is noise, hype, or misleading promotions. By the time traders sift through it, the opportunity to act may be gone. This platform solves that problem by combining automated data collection with AI-driven filtering, summarization, and relevance scoring, delivering only the information that has potential to move markets.
+
+I just created fresh next-app setup with App router, Tailwind, and only javascript. My goal now is to setup the main dashboard in the webapp where the news will be displayed. Do not include any dummy data, just the layout so i can see what i am kind of working with. 
+
+For the design, make it mostly dark themed background white brighter text. Ensure it is also mobile friendly and build to work on both mobile and desktop. Keep it organised and create a "components" folder and for the dashboard, keep all components from the main dashboard page in a "dashboard" folder within the "components" folder.
