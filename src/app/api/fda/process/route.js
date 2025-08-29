@@ -1,4 +1,4 @@
-// src/app/api/fda/process/route.js
+// src/app/api/fda/process/route.js - Updated for batch processing
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
@@ -15,9 +15,10 @@ const anthropic = new Anthropic({
 
 export async function POST(request) {
   try {
-    const { batchSize = 10, priorityOnly = false } = await request.json();
+    const { batchSize = 12, priorityOnly = false } = await request.json(); // Default 12 = 3 batches of 4
+    const BATCH_SIZE = 4; // Fixed batch size for optimal Claude performance
 
-    console.log(`Starting AI processing batch (size: ${batchSize})`);
+    console.log(`Starting batch AI processing (total size: ${batchSize})`);
 
     // Get pending items from processing queue
     let query = supabase
@@ -54,43 +55,71 @@ export async function POST(request) {
       });
     }
 
-    console.log(`Processing ${queueItems.length} FDA announcements`);
+    console.log(`Processing ${queueItems.length} FDA announcements in batches of ${BATCH_SIZE}`);
 
-    // Process each item
-    const processingResults = await Promise.allSettled(
-      queueItems.map(item => processAnnouncementWithAI(item))
-    );
+    // Split into batches of 4
+    const batches = [];
+    for (let i = 0; i < queueItems.length; i += BATCH_SIZE) {
+      batches.push(queueItems.slice(i, i + BATCH_SIZE));
+    }
 
-    // Count results
-    let successful = 0;
-    let failed = 0;
-    let errors = [];
+    console.log(`Created ${batches.length} batches for processing`);
 
-    processingResults.forEach((result, index) => {
-      if (result.status === 'fulfilled' && result.value.success) {
-        successful++;
-      } else {
-        failed++;
-        errors.push({
-          queue_id: queueItems[index].id,
-          error: result.status === 'fulfilled' ? result.value.error : result.reason.message
+    // Process each batch sequentially to avoid rate limits
+    const allResults = [];
+    let totalProcessed = 0;
+    let totalFailed = 0;
+    const allErrors = [];
+
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      console.log(`Processing batch ${i + 1}/${batches.length} (${batch.length} items)`);
+      
+      try {
+        const batchResult = await processBatchWithAI(batch);
+        allResults.push(batchResult);
+        
+        totalProcessed += batchResult.processed || 0;
+        totalFailed += batchResult.failed || 0;
+        
+        if (batchResult.errors) {
+          allErrors.push(...batchResult.errors);
+        }
+        
+        // Small delay between batches to respect rate limits
+        if (i < batches.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+      } catch (batchError) {
+        console.error(`Batch ${i + 1} failed:`, batchError);
+        totalFailed += batch.length;
+        allErrors.push({
+          batch: i + 1,
+          error: batchError.message
         });
+        
+        // Mark all items in failed batch as failed
+        await Promise.allSettled(
+          batch.map(item => updateQueueStatus(item.id, 'failed', `Batch processing failed: ${batchError.message}`))
+        );
       }
-    });
+    }
 
-    console.log(`AI processing complete: ${successful} successful, ${failed} failed`);
+    console.log(`All batches complete: ${totalProcessed} successful, ${totalFailed} failed`);
 
     return NextResponse.json({
       success: true,
-      processed: successful,
-      failed: failed,
+      processed: totalProcessed,
+      failed: totalFailed,
       total_items: queueItems.length,
-      errors: errors.length > 0 ? errors.slice(0, 3) : undefined,
+      batches_processed: batches.length,
+      errors: allErrors.length > 0 ? allErrors.slice(0, 5) : undefined,
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error('AI Processing Error:', error);
+    console.error('Batch AI Processing Error:', error);
     return NextResponse.json(
       { 
         success: false, 
@@ -102,133 +131,90 @@ export async function POST(request) {
   }
 }
 
-// Main AI processing function for a single announcement
-async function processAnnouncementWithAI(queueItem) {
+// Main batch processing function
+async function processBatchWithAI(queueItems) {
   try {
-    const announcement = queueItem.fda_announcements;
-    if (!announcement) {
-      throw new Error('No announcement data found');
+    // Validate input
+    if (!queueItems || queueItems.length === 0) {
+      throw new Error('No queue items provided for batch processing');
     }
 
-    // Mark as processing
-    await updateQueueStatus(queueItem.id, 'processing');
-
-    console.log(`Processing: ${announcement.fda_id}`);
-
-    // Step 1: Company/Stock Matching
-    const stockTicker = await matchCompanyToStock(announcement);
-
-    // Step 2: AI Relevance Analysis
-    const aiAnalysis = await analyzeWithClaude(announcement, stockTicker);
-
-    // Step 3: Save processed news
-    if (aiAnalysis.relevanceScore >= 30) { // Only save relevant items
-      const processedNewsId = await saveProcessedNews(announcement, stockTicker, aiAnalysis);
-      
-      // Mark queue item as completed
-      await updateQueueStatus(queueItem.id, 'completed');
-      
-      console.log(`✓ Processed and saved: ${announcement.fda_id} (score: ${aiAnalysis.relevanceScore})`);
-      return { success: true, processedNewsId, relevanceScore: aiAnalysis.relevanceScore };
-    } else {
-      // Mark as completed but don't publish (low relevance)
-      await updateQueueStatus(queueItem.id, 'completed');
-      console.log(`○ Processed but not published: ${announcement.fda_id} (score: ${aiAnalysis.relevanceScore})`);
-      return { success: true, relevanceScore: aiAnalysis.relevanceScore, published: false };
-    }
-
-  } catch (error) {
-    console.error(`Error processing ${queueItem.id}:`, error);
+    const batchItems = queueItems.slice(0, 4); // Ensure max 4 items
     
-    // Mark as failed and increment retry count
-    await updateQueueStatus(queueItem.id, 'failed', error.message);
-    return { success: false, error: error.message };
-  }
-}
+    console.log(`Processing batch of ${batchItems.length} FDA announcements`);
 
-// Company to stock ticker matching
-async function matchCompanyToStock(announcement) {
-  try {
-    const companyName = announcement.sponsor_name || announcement.description;
-    if (!companyName) return null;
+    // Mark all items as processing
+    await Promise.all(
+      batchItems.map(item => updateQueueStatus(item.id, 'processing'))
+    );
 
-    // Direct company name match
-    const { data: directMatch } = await supabase
-      .from('stock_mappings')
-      .select('stock_ticker, company_name')
-      .ilike('company_name', `%${companyName}%`)
-      .eq('is_active', true)
-      .limit(1)
-      .single();
+    // Perform batch AI analysis
+    const aiAnalysisResults = await batchAnalyzeWithClaude(batchItems);
 
-    if (directMatch) {
-      console.log(`✓ Direct match: ${companyName} → ${directMatch.stock_ticker}`);
-      return directMatch.stock_ticker;
-    }
+    // Process each result and save to database
+    const processingResults = await Promise.allSettled(
+      aiAnalysisResults.map((analysis, index) => 
+        saveBatchAnalysisResult(batchItems[index], analysis)
+      )
+    );
 
-    // Check aliases
-    const { data: aliasMatches } = await supabase
-      .from('stock_mappings')
-      .select('stock_ticker, company_name, aliases')
-      .eq('is_active', true);
+    // Count successes and failures
+    let successful = 0;
+    let failed = 0;
+    const errors = [];
 
-    if (aliasMatches) {
-      for (const mapping of aliasMatches) {
-        if (mapping.aliases) {
-          for (const alias of mapping.aliases) {
-            if (companyName.toLowerCase().includes(alias.toLowerCase()) || 
-                alias.toLowerCase().includes(companyName.toLowerCase())) {
-              console.log(`✓ Alias match: ${companyName} → ${mapping.stock_ticker} (via ${alias})`);
-              return mapping.stock_ticker;
-            }
-          }
-        }
+    processingResults.forEach((result, index) => {
+      if (result.status === 'fulfilled' && result.value.success) {
+        successful++;
+      } else {
+        failed++;
+        errors.push({
+          queue_id: batchItems[index].id,
+          fda_id: batchItems[index].fda_announcements?.fda_id,
+          error: result.status === 'fulfilled' ? result.value.error : result.reason.message
+        });
       }
-    }
+    });
 
-    console.log(`○ No stock match found for: ${companyName}`);
-    return null;
+    return {
+      success: true,
+      processed: successful,
+      failed: failed,
+      total_items: batchItems.length,
+      errors: errors.length > 0 ? errors : undefined
+    };
 
   } catch (error) {
-    console.error('Error in stock matching:', error);
-    return null;
+    console.error('Batch processing error:', error);
+    
+    // Mark all items as failed if batch completely fails
+    if (queueItems) {
+      await Promise.allSettled(
+        queueItems.map(item => updateQueueStatus(item.id, 'failed', error.message))
+      );
+    }
+
+    return {
+      success: false,
+      error: error.message,
+      processed: 0,
+      failed: queueItems?.length || 0
+    };
   }
 }
 
-// Claude analysis for relevance and summarization
-async function analyzeWithClaude(announcement, stockTicker) {
+// Batch AI analysis with Claude - returns structured JSON array
+async function batchAnalyzeWithClaude(batchItems) {
   try {
-    const prompt = `You are a financial analyst specializing in penny stocks and biotech/pharma investments. Analyze this FDA announcement for potential stock market impact.
-
-FDA Announcement:
-- Type: ${announcement.announcement_type}
-- Title: ${announcement.title}
-- Company: ${announcement.sponsor_name || 'Unknown'}
-- Product: ${announcement.product_name || 'Unknown'}
-- Description: ${announcement.description}
-- Date: ${announcement.announcement_date}
-- Stock Ticker: ${stockTicker || 'Not identified'}
-- Classification: ${announcement.classification || 'N/A'}
-
-Please provide a JSON response with:
-1. relevanceScore (0-100): How likely this is to impact stock prices
-2. priorityLevel (high/medium/low): Urgency for traders
-3. summary (2-3 sentences): Key takeaways for investors
-4. marketImpact (1 sentence): Expected price movement direction and reasoning
-5. tags (array): 3-5 relevant keywords for filtering
-
-Focus on penny stocks and small-cap companies. Consider:
-- Drug approvals = potentially very bullish
-- Safety recalls = potentially very bearish  
-- Device clearances = moderately bullish
-- Clinical trial outcomes = variable impact
-
-Respond only with valid JSON.`;
+    // Build the batch prompt
+    const prompt = buildBatchPrompt(batchItems);
+    
+    console.log(`Sending batch of ${batchItems.length} items to Claude`);
 
     const message = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 500,
-      temperature: 0.3,
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2500,
+      temperature: 0.1, // Very low temperature for consistent structured output
       messages: [
         {
           role: "user",
@@ -239,82 +225,206 @@ Respond only with valid JSON.`;
 
     const response = message.content[0].text.trim();
     
+    // Parse and validate JSON response
+    let analysisArray;
     try {
-      const analysis = JSON.parse(response);
+      // Remove any markdown code blocks if present
+      const cleanResponse = response.replace(/```json\n?|\n?```/g, '').trim();
       
-      // Validate required fields
-      if (typeof analysis.relevanceScore !== 'number' || 
-          !['high', 'medium', 'low'].includes(analysis.priorityLevel)) {
-        throw new Error('Invalid AI response format');
-      }
-
-      return {
-        relevanceScore: Math.max(0, Math.min(100, analysis.relevanceScore)),
-        priorityLevel: analysis.priorityLevel,
-        summary: analysis.summary || 'AI analysis unavailable',
-        marketImpact: analysis.marketImpact || 'Impact unclear',
-        tags: Array.isArray(analysis.tags) ? analysis.tags.slice(0, 5) : []
-      };
-
+      // Try to extract JSON if there's extra text
+      const jsonMatch = cleanResponse.match(/\[[\s\S]*\]/);
+      const jsonString = jsonMatch ? jsonMatch[0] : cleanResponse;
+      
+      analysisArray = JSON.parse(jsonString);
     } catch (parseError) {
-      console.error('Failed to parse AI response:', response);
-      throw new Error('Invalid AI response format');
+      console.error('JSON parsing failed:', parseError);
+      console.log('Raw response:', response);
+      throw new Error(`Invalid JSON response from Claude: ${parseError.message}`);
     }
 
+    // Validate response structure
+    if (!Array.isArray(analysisArray)) {
+      throw new Error('Claude response must be a JSON array');
+    }
+
+    if (analysisArray.length !== batchItems.length) {
+      console.warn(`Expected ${batchItems.length} results, got ${analysisArray.length}. Using available results.`);
+      // Pad with fallback analyses if needed
+      while (analysisArray.length < batchItems.length) {
+        const missingIndex = analysisArray.length;
+        analysisArray.push(getFallbackAnalysis(batchItems[missingIndex].fda_announcements));
+      }
+    }
+
+    // Validate and clean each analysis result
+    const validatedResults = analysisArray.slice(0, batchItems.length).map((analysis, index) => {
+      return validateAndCleanAnalysis(analysis, batchItems[index]);
+    });
+
+    console.log(`Successfully processed batch analysis for ${validatedResults.length} items`);
+    return validatedResults;
+
   } catch (error) {
-    console.error('Claude API Error:', error);
+    console.error('Claude batch analysis error:', error);
     
-    // Fallback analysis
-    return {
-      relevanceScore: getFallbackRelevanceScore(announcement),
-      priorityLevel: getFallbackPriority(announcement),
-      summary: `${announcement.announcement_type.replace('_', ' ')} announcement from ${announcement.sponsor_name || 'company'} regarding ${announcement.product_name || 'product'}.`,
-      marketImpact: 'AI analysis unavailable - manual review recommended',
-      tags: [announcement.announcement_type, 'fda', 'regulatory']
+    // Return fallback analysis for each item
+    return batchItems.map(item => getFallbackAnalysis(item.fda_announcements));
+  }
+}
+
+// Build the comprehensive batch prompt
+function buildBatchPrompt(batchItems) {
+  const announcements = batchItems.map((item, index) => {
+    const announcement = item.fda_announcements;
+    return `${index + 1}. ID: "${announcement.id}"
+   Type: ${announcement.announcement_type}
+   Title: "${announcement.title}"
+   Description: "${(announcement.description || '').substring(0, 400)}"
+   Company: ${announcement.sponsor_name || 'Unknown'}
+   Product: ${announcement.product_name || 'Unknown'}
+   Date: ${announcement.announcement_date}`;
+  }).join('\n\n');
+
+  return `You are a financial analyst specializing in penny stock trading intelligence. Analyze these ${batchItems.length} FDA announcements for market impact.
+
+CRITICAL REQUIREMENTS:
+1. Return ONLY a valid JSON array
+2. Must contain exactly ${batchItems.length} objects
+3. Objects must be in the same order as input
+4. No additional text or explanation
+
+Required JSON structure for each announcement:
+{
+  "fda_announcement_id": "exact-uuid-from-input",
+  "stock_ticker": "TICKER" or null,
+  "relevance_score": 0-100,
+  "priority_level": "high" or "medium" or "low",
+  "ai_summary": "2-3 sentence trading-focused summary",
+  "market_impact_assessment": "Expected price movement and reasoning",
+  "tags": ["tag1", "tag2", "tag3"]
+}
+
+Scoring guidelines:
+- Drug approvals: 60-95 (high if breakthrough/first-in-class)
+- Safety alerts: 70-95 (high for Class I recalls)  
+- Device approvals: 40-75 (medium unless novel technology)
+- Stock ticker: Use exact symbol (NVAX, MRNA, etc.) or null
+- Tags: 3-5 relevant keywords (biotech, drug_approval, safety_alert, etc.)
+
+FDA Announcements:
+
+${announcements}
+
+Return JSON array only:`;
+}
+
+// Validate and clean individual analysis results
+function validateAndCleanAnalysis(analysis, queueItem) {
+  const announcement = queueItem.fda_announcements;
+  
+  // Ensure required fields exist with proper types
+  const validated = {
+    fda_announcement_id: analysis.fda_announcement_id || announcement.id,
+    stock_ticker: analysis.stock_ticker && typeof analysis.stock_ticker === 'string' && analysis.stock_ticker !== 'null'
+      ? analysis.stock_ticker.toUpperCase() : null,
+    relevance_score: Math.max(0, Math.min(100, parseInt(analysis.relevance_score) || 0)),
+    priority_level: ['high', 'medium', 'low'].includes(analysis.priority_level) 
+      ? analysis.priority_level : 'medium',
+    ai_summary: typeof analysis.ai_summary === 'string' && analysis.ai_summary.length > 10
+      ? analysis.ai_summary.substring(0, 500) : `${announcement.announcement_type.replace('_', ' ')} from ${announcement.sponsor_name || 'company'}`,
+    market_impact_assessment: typeof analysis.market_impact_assessment === 'string' && analysis.market_impact_assessment.length > 5
+      ? analysis.market_impact_assessment.substring(0, 300) : 'Market impact requires further analysis',
+    tags: Array.isArray(analysis.tags) 
+      ? analysis.tags.slice(0, 5).map(tag => String(tag).toLowerCase().replace(/\s+/g, '_'))
+      : [announcement.announcement_type, 'fda', 'regulatory']
+  };
+
+  // Validate UUID format for fda_announcement_id
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(validated.fda_announcement_id)) {
+    console.warn(`Invalid UUID for announcement, using fallback: ${validated.fda_announcement_id}`);
+    validated.fda_announcement_id = announcement.id;
+  }
+
+  return validated;
+}
+
+// Save individual analysis result to database
+async function saveBatchAnalysisResult(queueItem, analysis) {
+  try {
+    const announcement = queueItem.fda_announcements;
+    
+    // Only save if relevance score meets threshold
+    if (analysis.relevance_score < 30) {
+      await updateQueueStatus(queueItem.id, 'completed');
+      return { 
+        success: true, 
+        published: false, 
+        reason: `Low relevance score: ${analysis.relevance_score}` 
+      };
+    }
+
+    // Insert into processed_news table
+    const { data, error } = await supabase
+      .from('processed_news')
+      .insert({
+        fda_announcement_id: analysis.fda_announcement_id,
+        stock_ticker: analysis.stock_ticker,
+        relevance_score: analysis.relevance_score,
+        priority_level: analysis.priority_level,
+        ai_summary: analysis.ai_summary,
+        market_impact_assessment: analysis.market_impact_assessment,
+        tags: analysis.tags,
+        is_published: analysis.relevance_score >= 50, // Auto-publish high relevance
+        published_at: analysis.relevance_score >= 50 ? new Date().toISOString() : null
+      })
+      .select('id')
+      .single();
+
+    if (error) throw error;
+
+    // Mark queue item as completed
+    await updateQueueStatus(queueItem.id, 'completed');
+    
+    console.log(`✓ Saved analysis for ${announcement.fda_id} (score: ${analysis.relevance_score}, ticker: ${analysis.stock_ticker || 'none'})`);
+    
+    return { 
+      success: true, 
+      processedNewsId: data.id, 
+      published: analysis.relevance_score >= 50,
+      relevanceScore: analysis.relevance_score 
     };
+
+  } catch (error) {
+    console.error(`Error saving analysis for ${queueItem.id}:`, error);
+    await updateQueueStatus(queueItem.id, 'failed', error.message);
+    return { success: false, error: error.message };
   }
 }
 
-// Fallback scoring if AI fails
-function getFallbackRelevanceScore(announcement) {
-  switch (announcement.announcement_type) {
-    case 'drug_approval': return 85;
-    case 'safety_alert': 
-      if (announcement.classification === 'Class I') return 90;
-      if (announcement.classification === 'Class II') return 70;
-      return 50;
-    case 'device_approval': return 60;
-    default: return 40;
-  }
-}
+// Fallback analysis if AI completely fails
+function getFallbackAnalysis(announcement) {
+  const fallbackScores = {
+    'drug_approval': 75,
+    'safety_alert': 80,
+    'device_approval': 60
+  };
 
-function getFallbackPriority(announcement) {
-  if (announcement.announcement_type === 'drug_approval') return 'high';
-  if (announcement.classification === 'Class I') return 'high';
-  if (announcement.announcement_type === 'safety_alert') return 'medium';
-  return 'low';
-}
+  const fallbackPriority = {
+    'drug_approval': 'high',
+    'safety_alert': 'high', 
+    'device_approval': 'medium'
+  };
 
-// Save processed news to database
-async function saveProcessedNews(announcement, stockTicker, aiAnalysis) {
-  const { data, error } = await supabase
-    .from('processed_news')
-    .insert({
-      fda_announcement_id: announcement.id,
-      stock_ticker: stockTicker,
-      relevance_score: aiAnalysis.relevanceScore,
-      priority_level: aiAnalysis.priorityLevel,
-      ai_summary: aiAnalysis.summary,
-      market_impact_assessment: aiAnalysis.marketImpact,
-      tags: aiAnalysis.tags,
-      is_published: aiAnalysis.relevanceScore >= 50, // Auto-publish high relevance items
-      published_at: aiAnalysis.relevanceScore >= 50 ? new Date().toISOString() : null
-    })
-    .select('id')
-    .single();
-
-  if (error) throw error;
-  return data.id;
+  return {
+    fda_announcement_id: announcement.id,
+    stock_ticker: null,
+    relevance_score: fallbackScores[announcement.announcement_type] || 50,
+    priority_level: fallbackPriority[announcement.announcement_type] || 'medium',
+    ai_summary: `${announcement.announcement_type.replace('_', ' ')} announcement from ${announcement.sponsor_name || 'company'} regarding ${announcement.product_name || 'product'}.`,
+    market_impact_assessment: 'AI analysis unavailable - manual review recommended',
+    tags: [announcement.announcement_type, 'fda', 'regulatory']
+  };
 }
 
 // Update processing queue status

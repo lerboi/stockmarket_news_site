@@ -1,4 +1,4 @@
-// src/app/dashboard/page.js
+// src/app/dashboard/page.js - Minimalist ultra-dark design
 'use client';
 import { useSession } from 'next-auth/react';
 import { useEffect, useState } from 'react';
@@ -16,11 +16,12 @@ export default function Dashboard() {
     category: 'all',
     timeframe: '24h'
   });
+  const [statsRefreshTrigger, setStatsRefreshTrigger] = useState(0);
 
   useEffect(() => {
-    if (status === 'loading') return; // Still loading
+    if (status === 'loading') return;
     if (!session) {
-      openLoginModal(); // Open login modal instead of redirect
+      openLoginModal();
       return;
     }
   }, [session, status, openLoginModal]);
@@ -29,13 +30,17 @@ export default function Dashboard() {
     setNewsFilters(newFilters);
   };
 
+  const handleStatsUpdate = () => {
+    setStatsRefreshTrigger(prev => prev + 1);
+  };
+
   // Show loading spinner while checking auth
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-block w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-4"></div>
-          <p className="text-gray-400">Loading dashboard...</p>
+          <div className="inline-block w-6 h-6 border border-gray-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p className="text-gray-500 text-sm">Loading dashboard...</p>
         </div>
       </div>
     );
@@ -44,16 +49,15 @@ export default function Dashboard() {
   // Show login prompt if not authenticated
   if (!session) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center max-w-md mx-auto p-8">
-          <div className="text-6xl mb-6">🔐</div>
-          <h2 className="text-2xl font-bold mb-4">Authentication Required</h2>
-          <p className="text-gray-400 mb-6">
+          <h2 className="text-xl font-light text-gray-300 mb-4">Authentication Required</h2>
+          <p className="text-gray-500 mb-8 text-sm leading-relaxed">
             Please sign in to access your PennystockAI dashboard and start analyzing FDA market intelligence.
           </p>
           <button
             onClick={openLoginModal}
-            className="bg-white hover:bg-gray-100 text-gray-900 font-semibold px-8 py-3 rounded-lg transition-colors"
+            className="bg-zinc-900 hover:bg-zinc-800 text-gray-200 font-medium px-8 py-3 rounded border border-zinc-700 transition-colors"
           >
             Sign In to Continue
           </button>
@@ -63,15 +67,20 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <DashboardHeader />
+    <div className="min-h-screen bg-black bg-fixed">
+      {/* Dark Header */}
+      <div className="border-b border-zinc-900">
+        <DashboardHeader />
+      </div>
       
-      <div className="container mx-auto px-4 py-6 max-w-7xl">
+      <div className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Stats Overview */}
-        <StatsOverview />
+        <div className="mb-8">
+          <StatsOverview refreshTrigger={statsRefreshTrigger} />
+        </div>
         
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mt-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Filters Sidebar */}
           <div className="lg:col-span-1">
             <NewsFilters 
@@ -82,7 +91,10 @@ export default function Dashboard() {
           
           {/* News Feed */}
           <div className="lg:col-span-3">
-            <NewsFeed filters={newsFilters} />
+            <NewsFeed 
+              filters={newsFilters}
+              onStatsUpdate={handleStatsUpdate}
+            />
           </div>
         </div>
       </div>

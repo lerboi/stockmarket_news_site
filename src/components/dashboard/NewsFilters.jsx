@@ -20,25 +20,25 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
   }, [currentFilters]);
 
   const priorityOptions = [
-    { value: 'all', label: 'All Priority', icon: '📊' },
-    { value: 'high', label: 'High Priority', icon: '🚨' },
-    { value: 'medium', label: 'Medium Priority', icon: '⚠️' },
-    { value: 'low', label: 'Low Priority', icon: '📈' }
+    { value: 'all', label: 'All Priority' },
+    { value: 'high', label: 'High Priority' },
+    { value: 'medium', label: 'Medium Priority' },
+    { value: 'low', label: 'Low Priority' }
   ];
 
   const categoryOptions = [
-    { value: 'all', label: 'All Categories', icon: '🏷️' },
-    { value: 'drug_approval', label: 'Drug Approvals', icon: '💊' },
-    { value: 'safety_alert', label: 'Safety Alerts', icon: '⚠️' },
-    { value: 'device_approval', label: 'Device Approvals', icon: '🏥' },
-    { value: 'regulatory', label: 'Regulatory', icon: '📋' }
+    { value: 'all', label: 'All Categories' },
+    { value: 'drug_approval', label: 'Drug Approvals' },
+    { value: 'safety_alert', label: 'Safety Alerts' },
+    { value: 'device_approval', label: 'Device Approvals' },
+    { value: 'regulatory', label: 'Regulatory' }
   ];
 
   const timeframeOptions = [
-    { value: '1h', label: 'Last Hour', icon: '⏰' },
-    { value: '24h', label: 'Last 24 Hours', icon: '📅' },
-    { value: '3d', label: 'Last 3 Days', icon: '📊' },
-    { value: '1w', label: 'Last Week', icon: '📆' }
+    { value: '1h', label: '1 Hour' },
+    { value: '24h', label: '24 Hours' },
+    { value: '3d', label: '3 Days' },
+    { value: '1w', label: '1 Week' }
   ];
 
   const handleFilterChange = (filterType, value) => {
@@ -93,7 +93,6 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <span className="text-lg">🔍</span>
             <div>
               <h3 className="text-sm font-semibold text-white">Filters</h3>
               {!isExpanded && getActiveFilterCount() > 0 && (
@@ -111,7 +110,7 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
               </span>
             )}
             <svg 
-              className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${
+              className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
                 isExpanded ? 'rotate-180' : ''
               }`} 
               fill="none" 
@@ -126,7 +125,7 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
 
       {/* Expanded Content */}
       <div className={`transition-all duration-300 ease-in-out overflow-hidden ${
-        isExpanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'
+        isExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
       }`}>
         <div className="p-4 pt-0 border-t border-zinc-800">
           {/* Quick Filter Buttons */}
@@ -140,27 +139,24 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
                   handleFilterChange('priority', 'high');
                   handleFilterChange('category', 'drug_approval');
                 }}
-                className="text-xs bg-green-600/20 hover:bg-green-600/30 text-green-300 px-3 py-2 rounded-full transition-colors flex items-center space-x-1"
+                className="text-xs bg-green-600/20 hover:bg-green-600/30 text-green-300 px-3 py-2 rounded transition-colors"
               >
-                <span>💊</span>
-                <span>High Priority Drugs</span>
+                High Priority Drugs
               </button>
               <button
                 onClick={() => {
                   handleFilterChange('priority', 'high');
                   handleFilterChange('category', 'safety_alert');
                 }}
-                className="text-xs bg-red-600/20 hover:bg-red-600/30 text-red-300 px-3 py-2 rounded-full transition-colors flex items-center space-x-1"
+                className="text-xs bg-red-600/20 hover:bg-red-600/30 text-red-300 px-3 py-2 rounded transition-colors"
               >
-                <span>⚠️</span>
-                <span>Safety Alerts</span>
+                Safety Alerts
               </button>
               <button
                 onClick={() => handleFilterChange('timeframe', '1h')}
-                className="text-xs bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 px-3 py-2 rounded-full transition-colors flex items-center space-x-1"
+                className="text-xs bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 px-3 py-2 rounded transition-colors"
               >
-                <span>⚡</span>
-                <span>Latest News</span>
+                Latest News
               </button>
             </div>
           </div>
@@ -170,14 +166,14 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
             <label className="block text-sm font-medium text-gray-300 mb-3">
               Priority Level
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-2">
               {priorityOptions.map(option => (
                 <label
                   key={option.value}
-                  className={`flex items-center justify-center space-x-2 p-3 rounded-lg cursor-pointer transition-all hover:bg-zinc-800 ${
+                  className={`flex items-center space-x-3 p-2 rounded cursor-pointer transition-all hover:bg-zinc-800 ${
                     selectedFilters.priority === option.value 
                       ? 'bg-blue-600/20 border border-blue-600/50 text-blue-300' 
-                      : 'text-gray-300 border border-zinc-700'
+                      : 'text-gray-300'
                   }`}
                 >
                   <input
@@ -186,10 +182,9 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
                     value={option.value}
                     checked={selectedFilters.priority === option.value}
                     onChange={(e) => handleFilterChange('priority', e.target.value)}
-                    className="sr-only"
+                    className="text-blue-600 focus:ring-blue-500 focus:ring-2"
                   />
-                  <span className="text-sm">{option.icon}</span>
-                  <span className="text-xs font-medium text-center">{option.label}</span>
+                  <span className="text-sm font-medium">{option.label}</span>
                 </label>
               ))}
             </div>
@@ -204,7 +199,7 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
               {categoryOptions.map(option => (
                 <label
                   key={option.value}
-                  className={`flex items-center space-x-3 p-2 rounded-lg cursor-pointer transition-all hover:bg-zinc-800 ${
+                  className={`flex items-center space-x-3 p-2 rounded cursor-pointer transition-all hover:bg-zinc-800 ${
                     selectedFilters.category === option.value 
                       ? 'bg-green-600/20 border border-green-600/50 text-green-300' 
                       : 'text-gray-300'
@@ -216,17 +211,9 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
                     value={option.value}
                     checked={selectedFilters.category === option.value}
                     onChange={(e) => handleFilterChange('category', e.target.value)}
-                    className="sr-only"
+                    className="text-green-600 focus:ring-green-500 focus:ring-2"
                   />
-                  <span>{option.icon}</span>
                   <span className="text-sm font-medium">{option.label}</span>
-                  {selectedFilters.category === option.value && (
-                    <span className="ml-auto text-green-400">
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </span>
-                  )}
                 </label>
               ))}
             </div>
@@ -241,7 +228,7 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
               {timeframeOptions.map(option => (
                 <label
                   key={option.value}
-                  className={`flex flex-col items-center justify-center p-3 rounded-lg cursor-pointer transition-all hover:bg-zinc-800 ${
+                  className={`flex items-center justify-center p-3 rounded cursor-pointer transition-all hover:bg-zinc-800 ${
                     selectedFilters.timeframe === option.value 
                       ? 'bg-purple-600/20 border border-purple-600/50 text-purple-300' 
                       : 'text-gray-300 border border-zinc-700'
@@ -255,8 +242,7 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
                     onChange={(e) => handleFilterChange('timeframe', e.target.value)}
                     className="sr-only"
                   />
-                  <span className="text-lg mb-1">{option.icon}</span>
-                  <span className="text-xs font-medium text-center">{option.label}</span>
+                  <span className="text-sm font-medium text-center">{option.label}</span>
                 </label>
               ))}
             </div>
@@ -267,7 +253,7 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
             {getActiveFilterCount() > 0 && (
               <button
                 onClick={resetFilters}
-                className="w-full bg-zinc-800 hover:bg-zinc-700 text-gray-300 hover:text-white text-sm font-medium py-2 px-4 rounded-lg transition-all flex items-center justify-center space-x-2"
+                className="w-full bg-zinc-800 hover:bg-zinc-700 text-gray-300 hover:text-white text-sm font-medium py-2 px-4 rounded transition-all flex items-center justify-center space-x-2"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -278,7 +264,7 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
 
             <button
               onClick={() => setIsExpanded(false)}
-              className="w-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 text-sm font-medium py-2 px-4 rounded-lg transition-colors"
+              className="w-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 text-sm font-medium py-2 px-4 rounded transition-colors"
             >
               Collapse Filters
             </button>

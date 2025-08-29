@@ -1,9 +1,9 @@
-// src/components/dashboard/NewsFeed.js
+// src/components/dashboard/NewsFeed.js - Modified to trigger stats updates
 'use client';
 import { useState, useEffect } from 'react';
 import NewsCard from './NewsCard';
 
-export default function NewsFeed({ filters }) {
+export default function NewsFeed({ filters, onStatsUpdate }) {
   const [newsItems, setNewsItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -29,6 +29,11 @@ export default function NewsFeed({ filters }) {
       if (result.success) {
         setNewsItems(result.data);
         setError(null);
+        
+        // Trigger stats update when news is successfully fetched
+        if (onStatsUpdate) {
+          onStatsUpdate();
+        }
       } else {
         setError('Failed to load news');
       }
@@ -52,9 +57,9 @@ export default function NewsFeed({ filters }) {
       const result = await response.json();
       
       if (result.success) {
-        // Wait a moment then refresh the news feed
+        // Wait a moment then refresh the news feed and stats
         setTimeout(() => {
-          fetchNews();
+          fetchNews(); // This will trigger stats update via onStatsUpdate
         }, 3000);
       } else {
         setError(`Pipeline failed: ${result.error}`);
@@ -71,7 +76,7 @@ export default function NewsFeed({ filters }) {
     try {
       const params = new URLSearchParams({
         limit: '10',
-        offset: newsItems.length.toString(), // Use offset instead of skip
+        offset: newsItems.length.toString(),
         priority: filters?.priority || 'all',
         category: filters?.category || 'all',
         timeframe: filters?.timeframe || '24h'
@@ -102,7 +107,6 @@ export default function NewsFeed({ filters }) {
           <div key={i} className="bg-zinc-900 rounded-lg p-6 border border-zinc-800 animate-pulse">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-zinc-700 rounded"></div>
                 <div>
                   <div className="h-4 bg-zinc-700 rounded w-20 mb-2"></div>
                   <div className="h-3 bg-zinc-700 rounded w-32"></div>
@@ -124,7 +128,7 @@ export default function NewsFeed({ filters }) {
   if (error) {
     return (
       <div className="bg-zinc-900 rounded-lg p-8 border border-zinc-800 text-center">
-        <div className="text-red-400 text-4xl mb-4">⚠️</div>
+        <div className="text-red-400 text-2xl mb-4">⚠</div>
         <h3 className="text-xl font-medium text-white mb-2">
           Connection Error
         </h3>
@@ -132,14 +136,14 @@ export default function NewsFeed({ filters }) {
         <div className="flex justify-center space-x-4">
           <button
             onClick={fetchNews}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded transition-colors"
           >
             Retry Connection
           </button>
           <button
             onClick={triggerFDAPipeline}
             disabled={triggering}
-            className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg transition-colors disabled:opacity-50"
+            className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded transition-colors disabled:opacity-50"
           >
             {triggering ? 'Processing...' : 'Trigger FDA Pipeline'}
           </button>
@@ -151,12 +155,12 @@ export default function NewsFeed({ filters }) {
   if (newsItems.length === 0) {
     return (
       <div className="space-y-4">
-        {/* Live Status Header */}
+        {/* Status Header */}
         <div className="bg-zinc-900 rounded-lg p-4 border border-zinc-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                <span className="w-2 h-2 bg-yellow-400 rounded-full mr-2 animate-pulse"></span>
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                <span className="w-2 h-2 bg-amber-400 rounded-full mr-2 animate-pulse"></span>
                 Waiting for Data
               </span>
               <span className="text-sm text-gray-400">
@@ -166,6 +170,7 @@ export default function NewsFeed({ filters }) {
             <button 
               onClick={fetchNews}
               className="p-2 text-gray-400 hover:text-white transition-colors"
+              title="Refresh news feed"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -174,24 +179,24 @@ export default function NewsFeed({ filters }) {
           </div>
         </div>
 
-        {/* Empty State with Action */}
+        {/* Empty State */}
         <div className="bg-zinc-900 rounded-lg p-8 border border-zinc-800 text-center">
-          <div className="text-6xl mb-4">🚀</div>
+          <div className="text-4xl mb-4">📊</div>
           <h3 className="text-xl font-medium text-white mb-2">
-            Ready to Start
+            Ready to Start Analysis
           </h3>
           <p className="text-gray-400 max-w-md mx-auto mb-6">
-            Click the button below to fetch and analyze recent FDA announcements. The AI will process them and display relevant penny stock news here.
+            Click below to fetch and analyze recent FDA announcements. The AI will process them and display relevant penny stock trading intelligence.
           </p>
           
-          {/* Pipeline Status */}
+          {/* Process Overview */}
           <div className="bg-zinc-800 rounded-lg p-4 mb-6 text-left max-w-md mx-auto">
-            <h4 className="text-sm font-medium text-white mb-2">What happens when you click:</h4>
-            <ul className="text-xs text-gray-400 space-y-1">
-              <li>• Fetch recent FDA drug approvals & safety alerts</li>
-              <li>• Analyze with Claude AI for market impact</li>
-              <li>• Match companies to stock tickers</li>
-              <li>• Display high-relevance news items</li>
+            <h4 className="text-sm font-medium text-white mb-2">Analysis Process:</h4>
+            <ul className="text-xs text-gray-400 space-y-1 list-disc list-inside">
+              <li>Fetch FDA drug approvals & safety alerts</li>
+              <li>AI filter for publicly traded companies only</li>
+              <li>AI analysis for market impact scoring</li>
+              <li>Display high-relevance trading news</li>
             </ul>
           </div>
 
@@ -199,7 +204,7 @@ export default function NewsFeed({ filters }) {
             <button
               onClick={triggerFDAPipeline}
               disabled={triggering}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors disabled:opacity-50 font-medium"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded transition-colors disabled:opacity-50 font-medium"
             >
               {triggering ? (
                 <>
@@ -207,29 +212,33 @@ export default function NewsFeed({ filters }) {
                   Processing FDA Data...
                 </>
               ) : (
-                <>
-                  🔄 Fetch FDA News Now
-                </>
+                'Fetch FDA News'
               )}
             </button>
             <button
-              onClick={() => setNewsItems([{
-                id: 'demo',
-                title: 'Demo: FDA Approves Breakthrough Drug for Rare Disease',
-                summary: 'This is a demo news item to show how the interface works. Real FDA news will appear here after processing.',
-                priority: 'high',
-                category: 'drug_approval',
-                timestamp: 'Just now',
-                ticker: 'DEMO',
-                relevanceScore: 85,
-                source: 'FDA (Demo)',
-                marketImpact: 'Expected positive catalyst for small biotech companies in rare disease space.',
-                tags: ['demo', 'drug_approval', 'biotech'],
-                companyName: 'Demo Pharmaceutical Inc'
-              }])}
-              className="bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-3 rounded-lg transition-colors text-sm"
+              onClick={() => {
+                setNewsItems([{
+                  id: 'demo',
+                  title: 'Demo: FDA Approves Breakthrough Drug for Rare Disease',
+                  summary: 'This is a demo news item showing the interface. Real FDA news will appear here after processing.',
+                  priority: 'high',
+                  category: 'drug_approval',
+                  timestamp: 'Just now',
+                  ticker: 'DEMO',
+                  relevanceScore: 85,
+                  source: 'FDA (Demo)',
+                  marketImpact: 'Expected positive catalyst for small biotech companies in rare disease space.',
+                  tags: ['demo', 'drug_approval', 'biotech'],
+                  companyName: 'Demo Pharmaceutical Inc'
+                }]);
+                // Trigger stats update when demo is loaded
+                if (onStatsUpdate) {
+                  onStatsUpdate();
+                }
+              }}
+              className="bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-3 rounded transition-colors text-sm"
             >
-              👀 Preview Demo
+              Preview Demo
             </button>
           </div>
         </div>
@@ -264,7 +273,7 @@ export default function NewsFeed({ filters }) {
         <div className="flex justify-center mt-8">
           <button 
             onClick={loadMoreNews}
-            className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-3 px-6 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={loading}
           >
             {loading ? 'Loading...' : 'Load More News'}
@@ -272,11 +281,11 @@ export default function NewsFeed({ filters }) {
         </div>
       )}
 
-      {/* Auto-refresh indicator */}
+      {/* Status Footer */}
       {newsItems.length > 0 && (
         <div className="text-center">
           <p className="text-xs text-gray-500">
-            Feed updates automatically • Last updated: {new Date().toLocaleTimeString()}
+            Updates when new FDA announcements are processed
           </p>
         </div>
       )}
