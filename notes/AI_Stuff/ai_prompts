@@ -13,9 +13,17 @@ For the design, make it mostly dark themed background white brighter text. Ensur
  Do not write any code yet, just give me what you plan to implement.
 
 
- Create FDA API fetching routes
-Set up Supabase tables for FDA data
-Build basic data ingestion and storage
-Implement AI filtering and company matching
-Connect to existing dashboard components
-Add real-time updates and notifications
+For Dashboard page:
+- Remove the Save, Share, and hashtag stuff. This is not a social media, it is for penystock traders to get updated relevant news.
+- Reduce the number of emojits and color in the filter tab. Theres too many emojis and stuff, and it looks too cluttered. Go for more of a minimalistic look.
+- Need to show What ticker the company is tradnig under, and what stock exchagne they are trading in. Use AI to discover this info if needed, but display it prominently and well.
+
+For ProfilelModal:
+- Remove Account Status
+- Fix sign out button, showing below error when clicked and cant sign out
+  In HTML, <button> cannot be a descendant of <button>.
+  This will cause a hydration error.
+
+For Register Modal:
+- Remove 'Full Name' input box requirement
+- Add PAassword validation and realtime updating password check that shows if password is strong enough, with a minimum of 8 characters.
