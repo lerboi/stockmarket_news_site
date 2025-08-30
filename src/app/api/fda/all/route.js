@@ -1,19 +1,19 @@
-// src/app/api/fda/all/route.js - Cleaned up, RSS only
+// src/app/api/fda/all/route.js - Updated for multiple RSS sources and time options
 import { NextResponse } from 'next/server';
 
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '50');
-    const hours = parseInt(searchParams.get('hours') || '24');
+    const timeframe = searchParams.get('timeframe') || '24h'; // 24h, 1w, 1m
     const includeTypes = searchParams.get('types')?.split(',') || ['drug_approval', 'safety_alert', 'device_approval', 'regulatory'];
 
     const baseUrl = getBaseUrl(request);
     
-    console.log(`Fetching FDA RSS data for last ${hours} hours, limit ${limit}`);
+    console.log(`Fetching FDA Multi-RSS data for timeframe: ${timeframe}, limit ${limit}`);
     
-    // Fetch from our RSS endpoint only
-    const rssResponse = await fetch(`${baseUrl}/api/fda/rss-feed?limit=${limit}&hours=${hours}`);
+    // Fetch from our enhanced RSS endpoint (both sources)
+    const rssResponse = await fetch(`${baseUrl}/api/fda/rss-feed?limit=${limit}&timeframe=${timeframe}`);
     
     if (!rssResponse.ok) {
       throw new Error(`RSS endpoint failed: ${rssResponse.status}`);
@@ -42,20 +42,26 @@ export async function GET(request) {
     // Apply final limit
     allData = allData.slice(0, limit);
 
-    console.log(`Returning ${allData.length} recent FDA RSS announcements`);
+    // Generate source breakdown
+    const sourceBreakdown = getSourceBreakdown(allData);
+
+    console.log(`Returning ${allData.length} recent FDA Multi-RSS announcements`);
 
     return NextResponse.json({
       success: true,
       data: allData,
       count: allData.length,
-      hours_filtered: hours,
+      total_found: rssResult.total_found || allData.length,
+      timeframe: timeframe,
       types_included: includeTypes,
-      source: 'FDA RSS Feed',
+      sources: rssResult.sources || ['FDA Press Releases', 'FDA MedWatch Alerts'],
+      source_breakdown: sourceBreakdown,
+      cutoff_time: rssResult.cutoff_time,
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error('FDA RSS All API Error:', error);
+    console.error('FDA Multi-RSS All API Error:', error);
     return NextResponse.json(
       { 
         success: false, 
@@ -65,6 +71,31 @@ export async function GET(request) {
       { status: 500 }
     );
   }
+}
+
+// Get breakdown of items by source
+function getSourceBreakdown(items) {
+  const breakdown = {
+    'FDA Press Releases': 0,
+    'FDA MedWatch Alerts': 0,
+    'Other': 0
+  };
+
+  items.forEach(item => {
+    if (item.source) {
+      if (item.source.includes('Press Releases')) {
+        breakdown['FDA Press Releases']++;
+      } else if (item.source.includes('MedWatch')) {
+        breakdown['FDA MedWatch Alerts']++;
+      } else {
+        breakdown['Other']++;
+      }
+    } else {
+      breakdown['Other']++;
+    }
+  });
+
+  return breakdown;
 }
 
 function getBaseUrl(request) {
@@ -74,21 +105,20 @@ function getBaseUrl(request) {
   return request.url.split('/api/fda/all')[0];
 }
 
-// src/app/api/fda/drug-approvals/route.js - RSS filtered for drug approvals
-import { NextResponse } from 'next/server';
+// Enhanced endpoint variations for specific feed types
 
-export async function GET(request) {
+// FDA Press Releases Only
+export async function GET_PRESS_RELEASES(request) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '100');
-    const hours = parseInt(searchParams.get('hours') || '1');
+    const timeframe = searchParams.get('timeframe') || '24h';
 
     const baseUrl = getBaseUrl(request);
     
-    console.log(`Fetching drug approvals from RSS feed for last ${hours} hours`);
+    console.log(`Fetching FDA Press Releases only for timeframe: ${timeframe}`);
     
-    // Get RSS data and filter for drug approvals
-    const rssResponse = await fetch(`${baseUrl}/api/fda/rss-feed?limit=${limit * 2}&hours=${hours}`);
+    const rssResponse = await fetch(`${baseUrl}/api/fda/rss-feed?limit=${limit * 2}&timeframe=${timeframe}`);
     
     if (!rssResponse.ok) {
       throw new Error(`RSS endpoint failed: ${rssResponse.status}`);
@@ -100,22 +130,22 @@ export async function GET(request) {
       throw new Error(rssResult.error || 'RSS feed parsing failed');
     }
 
-    // Filter for drug approvals only
-    const drugApprovals = (rssResult.data || [])
-      .filter(item => item.announcement_type === 'drug_approval')
+    // Filter for press releases only
+    const pressReleases = (rssResult.data || [])
+      .filter(item => item.source && item.source.includes('Press Releases'))
       .slice(0, limit);
 
     return NextResponse.json({
       success: true,
-      data: drugApprovals,
-      count: drugApprovals.length,
-      hours_filtered: hours,
-      source: 'FDA RSS Feed - Drug Approvals Only',
+      data: pressReleases,
+      count: pressReleases.length,
+      timeframe: timeframe,
+      source: 'FDA Press Releases Only',
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error('FDA Drug Approvals RSS Error:', error);
+    console.error('FDA Press Releases Error:', error);
     return NextResponse.json(
       { 
         success: false, 
@@ -127,28 +157,18 @@ export async function GET(request) {
   }
 }
 
-function getBaseUrl(request) {
-  if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:3000';
-  }
-  return request.url.split('/api/fda/drug-approvals')[0];
-}
-
-// src/app/api/fda/safety-alerts/route.js - RSS filtered for safety alerts
-import { NextResponse } from 'next/server';
-
-export async function GET(request) {
+// FDA MedWatch Alerts Only
+export async function GET_MEDWATCH_ALERTS(request) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '100');
-    const hours = parseInt(searchParams.get('hours') || '1');
+    const timeframe = searchParams.get('timeframe') || '24h';
 
     const baseUrl = getBaseUrl(request);
     
-    console.log(`Fetching safety alerts from RSS feed for last ${hours} hours`);
+    console.log(`Fetching FDA MedWatch Alerts only for timeframe: ${timeframe}`);
     
-    // Get RSS data and filter for safety alerts
-    const rssResponse = await fetch(`${baseUrl}/api/fda/rss-feed?limit=${limit * 2}&hours=${hours}`);
+    const rssResponse = await fetch(`${baseUrl}/api/fda/rss-feed?limit=${limit * 2}&timeframe=${timeframe}`);
     
     if (!rssResponse.ok) {
       throw new Error(`RSS endpoint failed: ${rssResponse.status}`);
@@ -160,22 +180,22 @@ export async function GET(request) {
       throw new Error(rssResult.error || 'RSS feed parsing failed');
     }
 
-    // Filter for safety alerts only
-    const safetyAlerts = (rssResult.data || [])
-      .filter(item => item.announcement_type === 'safety_alert')
+    // Filter for MedWatch alerts only
+    const medWatchAlerts = (rssResult.data || [])
+      .filter(item => item.source && item.source.includes('MedWatch'))
       .slice(0, limit);
 
     return NextResponse.json({
       success: true,
-      data: safetyAlerts,
-      count: safetyAlerts.length,
-      hours_filtered: hours,
-      source: 'FDA RSS Feed - Safety Alerts Only',
+      data: medWatchAlerts,
+      count: medWatchAlerts.length,
+      timeframe: timeframe,
+      source: 'FDA MedWatch Alerts Only',
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error('FDA Safety Alerts RSS Error:', error);
+    console.error('FDA MedWatch Alerts Error:', error);
     return NextResponse.json(
       { 
         success: false, 
@@ -185,71 +205,4 @@ export async function GET(request) {
       { status: 500 }
     );
   }
-}
-
-function getBaseUrl(request) {
-  if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:3000';
-  }
-  return request.url.split('/api/fda/safety-alerts')[0];
-}
-
-// src/app/api/fda/device-approvals/route.js - RSS filtered for device approvals
-import { NextResponse } from 'next/server';
-
-export async function GET(request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '100');  
-    const hours = parseInt(searchParams.get('hours') || '1');
-
-    const baseUrl = getBaseUrl(request);
-    
-    console.log(`Fetching device approvals from RSS feed for last ${hours} hours`);
-    
-    // Get RSS data and filter for device approvals
-    const rssResponse = await fetch(`${baseUrl}/api/fda/rss-feed?limit=${limit * 2}&hours=${hours}`);
-    
-    if (!rssResponse.ok) {
-      throw new Error(`RSS endpoint failed: ${rssResponse.status}`);
-    }
-    
-    const rssResult = await rssResponse.json();
-    
-    if (!rssResult.success) {
-      throw new Error(rssResult.error || 'RSS feed parsing failed');
-    }
-
-    // Filter for device approvals only
-    const deviceApprovals = (rssResult.data || [])
-      .filter(item => item.announcement_type === 'device_approval')
-      .slice(0, limit);
-
-    return NextResponse.json({
-      success: true,
-      data: deviceApprovals,
-      count: deviceApprovals.length,
-      hours_filtered: hours,
-      source: 'FDA RSS Feed - Device Approvals Only',
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('FDA Device Approvals RSS Error:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: error.message,
-        timestamp: new Date().toISOString()
-      },
-      { status: 500 }
-    );
-  }
-}
-
-function getBaseUrl(request) {
-  if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:3000';
-  }
-  return request.url.split('/api/fda/device-approvals')[0];
 }

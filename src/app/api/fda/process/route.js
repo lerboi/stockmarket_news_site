@@ -1,4 +1,4 @@
-// src/app/api/fda/process/route.js - Updated with sentiment analysis
+// src/app/api/fda/process/route.js - Updated with date filtering removed
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
@@ -13,9 +13,6 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Cache for FDA data source ID
-let fdaSourceId = null;
-
 export async function POST(request) {
   try {
     const { batchSize = 12, priorityOnly = false } = await request.json();
@@ -23,11 +20,7 @@ export async function POST(request) {
 
     console.log(`Starting batch AI processing (total size: ${batchSize})`);
 
-    // Ensure FDA data source exists
-    await ensureFDADataSource();
-
-    // Get pending items from processing queue (today's data only)
-    const today = new Date().toISOString().split('T')[0];
+    // Get pending items from processing queue (REMOVED DATE FILTERING)
     let query = supabase
       .from('processing_queue')
       .select(`
@@ -43,11 +36,11 @@ export async function POST(request) {
           product_name,
           announcement_date,
           classification,
+          source_id,
           raw_data
         )
       `)
       .eq('status', 'pending')
-      .eq('fda_announcements.announcement_date', today)
       .order('scheduled_at', { ascending: true })
       .limit(batchSize);
 
@@ -136,63 +129,6 @@ export async function POST(request) {
       },
       { status: 500 }
     );
-  }
-}
-
-// Ensure FDA data source exists and cache the ID
-async function ensureFDADataSource() {
-  if (fdaSourceId) {
-    return fdaSourceId;
-  }
-
-  try {
-    // Check if FDA data source already exists
-    const { data: existingSource, error: selectError } = await supabase
-      .from('data_sources')
-      .select('id')
-      .eq('source_name', 'FDA')
-      .single();
-
-    if (existingSource) {
-      fdaSourceId = existingSource.id;
-      return fdaSourceId;
-    }
-
-    // Create FDA data source if it doesn't exist
-    const { data: newSource, error: insertError } = await supabase
-      .from('data_sources')
-      .insert({
-        source_name: 'FDA',
-        source_type: 'regulatory',
-        is_active: true,
-        api_config: {
-          base_url: 'https://api.fda.gov',
-          endpoints: {
-            drug_approvals: '/drug/drugsfda.json',
-            safety_alerts: '/food/enforcement.json',
-            device_approvals: '/device/510k.json'
-          }
-        },
-        processing_config: {
-          batch_size: 50,
-          retry_attempts: 3,
-          ai_filtering_enabled: true
-        }
-      })
-      .select('id')
-      .single();
-
-    if (insertError) {
-      throw insertError;
-    }
-
-    fdaSourceId = newSource.id;
-    console.log(`Created FDA data source with ID: ${fdaSourceId}`);
-    return fdaSourceId;
-
-  } catch (error) {
-    console.error('Error ensuring FDA data source:', error);
-    throw new Error(`Failed to create/retrieve FDA data source: ${error.message}`);
   }
 }
 
@@ -439,8 +375,12 @@ async function saveBatchAnalysisResult(queueItem, analysis) {
   try {
     const announcement = queueItem.fda_announcements;
     
-    // Ensure we have the FDA source ID
-    await ensureFDADataSource();
+    // Get the actual source_id from the announcement's source_id field
+    const sourceId = announcement.source_id;
+    
+    if (!sourceId) {
+      throw new Error('No source_id found in announcement data');
+    }
     
     // Only save if relevance score meets threshold
     if (analysis.relevance_score < 30) {
@@ -452,12 +392,12 @@ async function saveBatchAnalysisResult(queueItem, analysis) {
       };
     }
 
-    // Insert into processed_news table
+    // Insert into processed_news table using the announcement's source_id
     const { data, error } = await supabase
       .from('processed_news')
       .insert({
         fda_announcement_id: analysis.fda_announcement_id,
-        source_id: fdaSourceId,
+        source_id: sourceId, // Use the source_id from the original announcement
         stock_ticker: analysis.stock_ticker,
         stock_exchange: analysis.stock_exchange,
         relevance_score: analysis.relevance_score,
@@ -478,7 +418,7 @@ async function saveBatchAnalysisResult(queueItem, analysis) {
     // Mark queue item as completed
     await updateQueueStatus(queueItem.id, 'completed');
     
-    console.log(`âœ" Saved analysis for ${announcement.fda_id} (score: ${analysis.relevance_score}, ticker: ${analysis.stock_ticker || 'none'}, sentiment: ${analysis.sentiment} ${analysis.sentiment_strength}%)`);
+    console.log(`✓ Saved analysis for ${announcement.fda_id} (score: ${analysis.relevance_score}, ticker: ${analysis.stock_ticker || 'none'}, sentiment: ${analysis.sentiment} ${analysis.sentiment_strength}%)`);
     
     return { 
       success: true, 

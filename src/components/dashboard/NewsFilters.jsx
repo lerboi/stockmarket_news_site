@@ -1,4 +1,4 @@
-// src/components/dashboard/NewsFilters.jsx - Updated with sentiment filter
+// src/components/dashboard/NewsFilters.jsx - Monotone minimal design
 'use client';
 import { useState, useEffect } from 'react';
 
@@ -10,7 +10,24 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
     timeframe: '24h',
     ...currentFilters
   });
+
+  // Responsive default state: open on desktop, closed on mobile
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Set default expansion state based on screen size
+  useEffect(() => {
+    const checkScreenSize = () => {
+      const isDesktop = window.innerWidth >= 768; // md breakpoint
+      setIsExpanded(isDesktop);
+    };
+
+    // Set initial state
+    checkScreenSize();
+
+    // Listen for window resize
+    window.addEventListener('resize', checkScreenSize);
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
 
   // Update filters when currentFilters prop changes
   useEffect(() => {
@@ -37,16 +54,16 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
 
   const sentimentOptions = [
     { value: 'all', label: 'All Sentiment' },
-    { value: 'bullish', label: 'Bullish 📈' },
-    { value: 'bearish', label: 'Bearish 📉' },
-    { value: 'neutral', label: 'Neutral ➡️' }
+    { value: 'bullish', label: 'Bullish' },
+    { value: 'bearish', label: 'Bearish' },
+    { value: 'neutral', label: 'Neutral' }
   ];
 
+  // Updated timeframe options for multi-source RSS
   const timeframeOptions = [
-    { value: '1h', label: '1 Hour' },
-    { value: '24h', label: '24 Hours' },
-    { value: '3d', label: '3 Days' },
-    { value: '1w', label: '1 Week' }
+    { value: '24h', label: '24 Hours', description: 'Breaking news & real-time alerts' },
+    { value: '1w', label: '1 Week', description: 'Weekly market trends' },
+    { value: '1m', label: '1 Month', description: 'Monthly analysis & patterns' }
   ];
 
   const handleFilterChange = (filterType, value) => {
@@ -97,53 +114,55 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
   };
 
   return (
-    <div className="bg-zinc-900 rounded-lg border border-zinc-800 sticky top-6">
-      {/* Collapsed Header */}
+    <div className="bg-zinc-900/50 rounded-xl border border-zinc-800/50 backdrop-blur-sm sticky top-6">
+      {/* Minimal Monotone Header */}
       <div 
-        className="p-4 cursor-pointer hover:bg-zinc-800/50 transition-colors rounded-t-lg"
+        className="p-4 cursor-pointer hover:bg-zinc-800/30 transition-all duration-200 rounded-t-xl md:cursor-default"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div>
-              <h3 className="text-sm font-semibold text-white">Filters</h3>
+              <h3 className="text-sm font-semibold text-white tracking-wide">FILTERS</h3>
               {!isExpanded && getActiveFilterCount() > 0 && (
-                <p className="text-xs text-gray-400 truncate max-w-48">
-                  {getFilterSummary().join(', ')}
+                <p className="text-xs text-gray-500 truncate max-w-48 mt-1">
+                  {getFilterSummary().join(' • ')}
                 </p>
               )}
             </div>
           </div>
           
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
             {getActiveFilterCount() > 0 && (
-              <span className="bg-blue-600 text-white text-xs font-medium px-2 py-1 rounded-full">
+              <div className="bg-white text-black text-xs font-bold px-2 py-1 rounded-full min-w-[20px] text-center">
                 {getActiveFilterCount()}
-              </span>
+              </div>
             )}
             <svg 
-              className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
+              className={`w-4 h-4 text-gray-500 transition-transform duration-200 md:hidden ${
                 isExpanded ? 'rotate-180' : ''
               }`} 
               fill="none" 
               stroke="currentColor" 
               viewBox="0 0 24 24"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 9l-7 7-7-7" />
             </svg>
           </div>
         </div>
       </div>
 
       {/* Expanded Content */}
-      <div className={`transition-all duration-300 ease-in-out overflow-hidden ${
-        isExpanded ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'
+      <div className={`transition-all duration-300 ease-out overflow-hidden ${
+        isExpanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'
       }`}>
-        <div className="p-4 pt-0 border-t border-zinc-800">
-          {/* Quick Filter Buttons */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-3">
-              Quick Filters
+        <div className="px-4 pb-4 space-y-6">
+          <div className="h-px bg-zinc-800/50"></div>
+
+          {/* Quick Actions - Minimal Pills */}
+          <div>
+            <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
+              Quick Actions
             </label>
             <div className="flex flex-wrap gap-2">
               <button
@@ -151,51 +170,52 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
                   handleFilterChange('sentiment', 'bullish');
                   handleFilterChange('priority', 'high');
                 }}
-                className="text-xs bg-green-600/20 hover:bg-green-600/30 text-green-300 px-3 py-2 rounded transition-colors"
+                className="text-xs bg-zinc-800/60 hover:bg-zinc-700/80 text-gray-300 hover:text-white px-3 py-2 rounded-full transition-all duration-200 border border-zinc-700/50 hover:border-zinc-600"
               >
-                🚀 Bullish Catalysts
+                Bullish Catalysts
               </button>
               <button
                 onClick={() => {
                   handleFilterChange('sentiment', 'bearish');
                   handleFilterChange('category', 'safety_alert');
                 }}
-                className="text-xs bg-red-600/20 hover:bg-red-600/30 text-red-300 px-3 py-2 rounded transition-colors"
+                className="text-xs bg-zinc-800/60 hover:bg-zinc-700/80 text-gray-300 hover:text-white px-3 py-2 rounded-full transition-all duration-200 border border-zinc-700/50 hover:border-zinc-600"
               >
-                ⚠️ Risk Alerts
+                Risk Alerts
               </button>
               <button
-                onClick={() => handleFilterChange('timeframe', '1h')}
-                className="text-xs bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 px-3 py-2 rounded transition-colors"
+                onClick={() => handleFilterChange('timeframe', '24h')}
+                className="text-xs bg-zinc-800/60 hover:bg-zinc-700/80 text-gray-300 hover:text-white px-3 py-2 rounded-full transition-all duration-200 border border-zinc-700/50 hover:border-zinc-600"
               >
-                ⚡ Breaking News
+                Breaking News
               </button>
             </div>
           </div>
 
           {/* Priority Filter */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
               Priority Level
             </label>
-            <div className="space-y-2">
+            <div className="space-y-1">
               {priorityOptions.map(option => (
                 <label
                   key={option.value}
-                  className={`flex items-center space-x-3 p-2 rounded cursor-pointer transition-all hover:bg-zinc-800 ${
+                  className={`group flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-all duration-200 ${
                     selectedFilters.priority === option.value 
-                      ? 'bg-blue-600/20 border border-blue-600/50 text-blue-300' 
-                      : 'text-gray-300'
+                      ? 'bg-white/10 border border-white/20 text-white' 
+                      : 'text-gray-400 hover:bg-zinc-800/50 hover:text-gray-300'
                   }`}
                 >
-                  <input
-                    type="radio"
-                    name="priority"
-                    value={option.value}
-                    checked={selectedFilters.priority === option.value}
-                    onChange={(e) => handleFilterChange('priority', e.target.value)}
-                    className="text-blue-600 focus:ring-blue-500 focus:ring-2"
-                  />
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all duration-200 ${
+                    selectedFilters.priority === option.value
+                      ? 'border-white bg-white'
+                      : 'border-gray-600 group-hover:border-gray-500'
+                  }`}>
+                    {selectedFilters.priority === option.value && (
+                      <div className="w-1.5 h-1.5 bg-black rounded-full"></div>
+                    )}
+                  </div>
                   <span className="text-sm font-medium">{option.label}</span>
                 </label>
               ))}
@@ -203,28 +223,29 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
           </div>
 
           {/* Sentiment Filter */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-3">
-              AI Sentiment
+          <div>
+            <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
+              Market Sentiment
             </label>
-            <div className="space-y-2">
+            <div className="space-y-1">
               {sentimentOptions.map(option => (
                 <label
                   key={option.value}
-                  className={`flex items-center space-x-3 p-2 rounded cursor-pointer transition-all hover:bg-zinc-800 ${
+                  className={`group flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-all duration-200 ${
                     selectedFilters.sentiment === option.value 
-                      ? 'bg-green-600/20 border border-green-600/50 text-green-300' 
-                      : 'text-gray-300'
+                      ? 'bg-white/10 border border-white/20 text-white' 
+                      : 'text-gray-400 hover:bg-zinc-800/50 hover:text-gray-300'
                   }`}
                 >
-                  <input
-                    type="radio"
-                    name="sentiment"
-                    value={option.value}
-                    checked={selectedFilters.sentiment === option.value}
-                    onChange={(e) => handleFilterChange('sentiment', e.target.value)}
-                    className="text-green-600 focus:ring-green-500 focus:ring-2"
-                  />
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all duration-200 ${
+                    selectedFilters.sentiment === option.value
+                      ? 'border-white bg-white'
+                      : 'border-gray-600 group-hover:border-gray-500'
+                  }`}>
+                    {selectedFilters.sentiment === option.value && (
+                      <div className="w-1.5 h-1.5 bg-black rounded-full"></div>
+                    )}
+                  </div>
                   <span className="text-sm font-medium">{option.label}</span>
                 </label>
               ))}
@@ -232,28 +253,29 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
           </div>
 
           {/* Category Filter */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-3">
-              News Category
+          <div>
+            <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
+              Announcement Type
             </label>
-            <div className="space-y-2">
+            <div className="space-y-1">
               {categoryOptions.map(option => (
                 <label
                   key={option.value}
-                  className={`flex items-center space-x-3 p-2 rounded cursor-pointer transition-all hover:bg-zinc-800 ${
+                  className={`group flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-all duration-200 ${
                     selectedFilters.category === option.value 
-                      ? 'bg-amber-600/20 border border-amber-600/50 text-amber-300' 
-                      : 'text-gray-300'
+                      ? 'bg-white/10 border border-white/20 text-white' 
+                      : 'text-gray-400 hover:bg-zinc-800/50 hover:text-gray-300'
                   }`}
                 >
-                  <input
-                    type="radio"
-                    name="category"
-                    value={option.value}
-                    checked={selectedFilters.category === option.value}
-                    onChange={(e) => handleFilterChange('category', e.target.value)}
-                    className="text-amber-600 focus:ring-amber-500 focus:ring-2"
-                  />
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all duration-200 ${
+                    selectedFilters.category === option.value
+                      ? 'border-white bg-white'
+                      : 'border-gray-600 group-hover:border-gray-500'
+                  }`}>
+                    {selectedFilters.category === option.value && (
+                      <div className="w-1.5 h-1.5 bg-black rounded-full"></div>
+                    )}
+                  </div>
                   <span className="text-sm font-medium">{option.label}</span>
                 </label>
               ))}
@@ -261,20 +283,37 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
           </div>
 
           {/* Timeframe Filter */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
               Time Range
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-2">
               {timeframeOptions.map(option => (
                 <label
                   key={option.value}
-                  className={`flex items-center justify-center p-3 rounded cursor-pointer transition-all hover:bg-zinc-800 ${
+                  className={`group block p-4 rounded-lg cursor-pointer transition-all duration-200 border ${
                     selectedFilters.timeframe === option.value 
-                      ? 'bg-purple-600/20 border border-purple-600/50 text-purple-300' 
-                      : 'text-gray-300 border border-zinc-700'
+                      ? 'bg-white/10 border-white/20 text-white' 
+                      : 'text-gray-400 border-zinc-800/50 hover:bg-zinc-800/50 hover:border-zinc-700 hover:text-gray-300'
                   }`}
                 >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-sm">{option.label}</div>
+                      <div className="text-xs text-gray-500 mt-1 group-hover:text-gray-400 transition-colors duration-200">
+                        {option.description}
+                      </div>
+                    </div>
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all duration-200 ${
+                      selectedFilters.timeframe === option.value
+                        ? 'border-white bg-white'
+                        : 'border-gray-600 group-hover:border-gray-500'
+                    }`}>
+                      {selectedFilters.timeframe === option.value && (
+                        <div className="w-1.5 h-1.5 bg-black rounded-full"></div>
+                      )}
+                    </div>
+                  </div>
                   <input
                     type="radio"
                     name="timeframe"
@@ -283,31 +322,30 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
                     onChange={(e) => handleFilterChange('timeframe', e.target.value)}
                     className="sr-only"
                   />
-                  <span className="text-sm font-medium text-center">{option.label}</span>
                 </label>
               ))}
             </div>
           </div>
 
           {/* Actions */}
-          <div className="space-y-2">
+          <div className="space-y-3 pt-2">
             {getActiveFilterCount() > 0 && (
               <button
                 onClick={resetFilters}
-                className="w-full bg-zinc-800 hover:bg-zinc-700 text-gray-300 hover:text-white text-sm font-medium py-2 px-4 rounded transition-all flex items-center justify-center space-x-2"
+                className="w-full bg-zinc-800/60 hover:bg-zinc-700/80 text-gray-300 hover:text-white text-sm font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center space-x-2 border border-zinc-700/50 hover:border-zinc-600"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                <span>Reset All</span>
+                <span>Reset All Filters</span>
               </button>
             )}
 
             <button
               onClick={() => setIsExpanded(false)}
-              className="w-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 text-sm font-medium py-2 px-4 rounded transition-colors"
+              className="w-full md:hidden bg-white/10 hover:bg-white/20 text-white text-sm font-medium py-3 px-4 rounded-lg transition-all duration-200 border border-white/20"
             >
-              Collapse Filters
+              Apply Filters
             </button>
           </div>
         </div>

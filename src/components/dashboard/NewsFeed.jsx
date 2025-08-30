@@ -1,4 +1,4 @@
-// src/components/dashboard/NewsFeed.jsx - Updated for real-time RSS processing
+// src/components/dashboard/NewsFeed.jsx - Updated for multi-source RSS processing with timeframe options
 'use client';
 import { useState, useEffect } from 'react';
 import NewsCard from './NewsCard';
@@ -25,7 +25,7 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
         limit: '20',
         priority: filters?.priority || 'all',
         category: filters?.category || 'all',
-        timeframe: filters?.timeframe || '24h'
+        timeframe: filters?.timeframe || '24h' // Changed from hours to timeframe
       });
 
       const response = await fetch(`/api/news?${params}`);
@@ -51,7 +51,7 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
     }
   };
 
-  const triggerFDAPipeline = async (hours = 24) => {
+  const triggerFDAPipeline = async (timeframe = '24h') => {
     try {
       setTriggering(true);
       setError(null);
@@ -62,18 +62,27 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
         body: JSON.stringify({ 
           action: 'full', 
           limit: 15, 
-          hours: hours // Real-time: last 1 hour by default
+          timeframe: timeframe // Use timeframe instead of hours
         })
       });
       
       const result = await response.json();
       
       if (result.success) {
-        console.log(`RSS Pipeline success:`, result.summary);
+        console.log(`Multi-RSS Pipeline success:`, result.summary);
         
-        // Show success message
+        // Show success message with source breakdown
         if (result.summary.ingested === 0) {
-          setError(`No new FDA announcements found in the last ${hours} hour${hours > 1 ? 's' : ''}`);
+          const timeLabel = timeframe === '24h' ? '24 hours' : timeframe === '1w' ? 'week' : 'month';
+          setError(`No new FDA announcements found in the last ${timeLabel}`);
+        } else {
+          // Show breakdown if available
+          const breakdown = result.summary.source_breakdown;
+          if (breakdown) {
+            const pressCount = breakdown['FDA Press Releases'] || 0;
+            const medwatchCount = breakdown['FDA MedWatch Alerts'] || 0;
+            console.log(`Source breakdown - Press Releases: ${pressCount}, MedWatch Alerts: ${medwatchCount}`);
+          }
         }
         
         // Wait a moment then refresh the news feed and stats
@@ -82,11 +91,11 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
           setError(null);
         }, 3000);
       } else {
-        setError(`RSS Pipeline failed: ${result.error}`);
+        setError(`Multi-RSS Pipeline failed: ${result.error}`);
       }
     } catch (err) {
-      setError('Failed to trigger FDA RSS pipeline');
-      console.error('RSS Pipeline trigger error:', err);
+      setError('Failed to trigger FDA Multi-RSS pipeline');
+      console.error('Multi-RSS Pipeline trigger error:', err);
     } finally {
       setTriggering(false);
     }
@@ -99,7 +108,7 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
         offset: newsItems.length.toString(),
         priority: filters?.priority || 'all',
         category: filters?.category || 'all',
-        timeframe: filters?.timeframe || '24h'
+        timeframe: filters?.timeframe || '24h' // Changed from hours to timeframe
       });
 
       const response = await fetch(`/api/news?${params}`);
@@ -153,7 +162,7 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
           {error.includes('No new FDA') ? 'No Recent Announcements' : 'Connection Error'}
         </h3>
         <p className="text-gray-400 mb-6">{error}</p>
-        <div className="flex justify-center space-x-4">
+        <div className="flex justify-center space-x-4 flex-wrap gap-2">
           <button
             onClick={fetchNews}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded transition-colors"
@@ -161,18 +170,25 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
             Retry Connection
           </button>
           <button
-            onClick={() => triggerFDAPipeline(24)}
+            onClick={() => triggerFDAPipeline('24h')}
             disabled={triggering}
             className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded transition-colors disabled:opacity-50"
           >
             {triggering ? 'Processing...' : 'Check Last 24 Hours'}
           </button>
           <button
-            onClick={() => triggerFDAPipeline(6)}
+            onClick={() => triggerFDAPipeline('1w')}
             disabled={triggering}
             className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded transition-colors disabled:opacity-50"
           >
-            {triggering ? 'Processing...' : 'Check Last 6 Hours'}
+            {triggering ? 'Processing...' : 'Check Last Week'}
+          </button>
+          <button
+            onClick={() => triggerFDAPipeline('1m')}
+            disabled={triggering}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded transition-colors disabled:opacity-50"
+          >
+            {triggering ? 'Processing...' : 'Check Last Month'}
           </button>
         </div>
       </div>
@@ -182,16 +198,16 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
   if (newsItems.length === 0) {
     return (
       <div className="space-y-4">
-        {/* Real-Time Status Header */}
+        {/* Multi-Source Real-Time Status Header */}
         <div className="bg-zinc-900 rounded-lg p-4 border border-zinc-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                 <span className="w-2 h-2 bg-blue-400 rounded-full mr-2 animate-pulse"></span>
-                Real-Time RSS Feed
+                Multi-Source RSS Feed
               </span>
               <span className="text-sm text-gray-400">
-                Monitoring FDA press releases
+                Monitoring FDA Press Releases + MedWatch Alerts
               </span>
               {lastUpdate && (
                 <span className="text-xs text-gray-500">
@@ -215,27 +231,29 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
         <div className="bg-zinc-900 rounded-lg p-8 border border-zinc-800 text-center">
           <div className="text-4xl mb-4">📡</div>
           <h3 className="text-xl font-medium text-white mb-2">
-            Ready for Real-Time Analysis
+            Ready for Multi-Source Analysis
           </h3>
           <p className="text-gray-400 max-w-md mx-auto mb-6">
-            Click below to fetch and analyze recent FDA press releases. The AI will process them in real-time and display relevant penny stock trading intelligence.
+            Click below to fetch and analyze recent FDA announcements from both Press Releases and MedWatch Alerts. 
+            The AI will process them in real-time and display relevant penny stock trading intelligence.
           </p>
           
-          {/* Process Overview */}
+          {/* Multi-Source Process Overview */}
           <div className="bg-zinc-800 rounded-lg p-4 mb-6 text-left max-w-md mx-auto">
-            <h4 className="text-sm font-medium text-white mb-2">Real-Time Process:</h4>
+            <h4 className="text-sm font-medium text-white mb-2">Multi-Source Real-Time Process:</h4>
             <ul className="text-xs text-gray-400 space-y-1 list-disc list-inside">
-              <li>Parse FDA RSS press releases</li>
-              <li>Filter by time (last 1-24 hours)</li>
+              <li>Parse FDA Press Releases RSS feed</li>
+              <li>Parse FDA MedWatch Safety Alerts RSS feed</li>
+              <li>Filter by timeframe (24h/1w/1m)</li>
               <li>AI filter for publicly traded companies</li>
-              <li>Real-time relevance scoring</li>
-              <li>Breaking news alerts</li>
+              <li>Real-time relevance scoring & sentiment analysis</li>
+              <li>Multi-source breaking news alerts</li>
             </ul>
           </div>
 
           <div className="flex justify-center space-x-3 flex-wrap gap-2">
             <button
-              onClick={() => triggerFDAPipeline(24)}
+              onClick={() => triggerFDAPipeline('24h')}
               disabled={triggering}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded transition-colors disabled:opacity-50 font-medium"
             >
@@ -250,35 +268,38 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
             </button>
             
             <button
-              onClick={() => triggerFDAPipeline(6)}
+              onClick={() => triggerFDAPipeline('1w')}
               disabled={triggering}
               className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded transition-colors disabled:opacity-50 font-medium"
             >
-              Last 6 Hours
+              Last Week
             </button>
             
             <button
-              onClick={() => triggerFDAPipeline(1)}
+              onClick={() => triggerFDAPipeline('1m')}
               disabled={triggering}
               className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded transition-colors disabled:opacity-50 font-medium"
             >
-              Last Hour
+              Last Month
             </button>
             
             <button
               onClick={() => {
                 setNewsItems([{
-                  id: 'demo-rss',
-                  title: 'Demo: FDA Approves Breakthrough Cancer Drug via RSS',
-                  summary: 'This is a demo showing real-time RSS processing. Live FDA press releases will appear here within minutes of publication.',
+                  id: 'demo-multi-rss',
+                  title: 'Demo: FDA Breakthrough Drug Approval + MedWatch Safety Alert',
+                  summary: 'This demo shows multi-source RSS processing from both FDA Press Releases and MedWatch Alerts. Live data from both feeds will appear here within minutes of publication.',
                   priority: 'high',
                   category: 'drug_approval',
                   timestamp: 'Just now',
                   ticker: 'DEMO',
+                  exchange: 'NASDAQ',
+                  sentiment: 'bullish',
+                  sentimentStrength: 85,
                   relevanceScore: 92,
-                  source: 'FDA RSS (Demo)',
-                  marketImpact: 'Expected immediate positive catalyst - breaking news from official FDA press release.',
-                  tags: ['breaking_news', 'real_time', 'drug_approval', 'cancer'],
+                  source: 'FDA Multi-RSS (Demo)',
+                  marketImpact: 'Expected immediate positive catalyst - breaking news from official FDA multi-source feeds.',
+                  tags: ['breaking_news', 'multi_source', 'drug_approval', 'real_time'],
                   companyName: 'Demo Biotech Inc'
                 }]);
                 if (onStatsUpdate) {
@@ -291,11 +312,11 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
             </button>
           </div>
           
-          {/* Info Note */}
+          {/* Multi-Source Info Note */}
           <div className="mt-6 p-3 bg-blue-900/20 border border-blue-800 rounded-lg">
             <p className="text-xs text-blue-300">
-              💡 <strong>Real-Time:</strong> This system processes FDA press releases as they're published, 
-              typically within 5-15 minutes of official release.
+              💡 <strong>Multi-Source Real-Time:</strong> This system processes both FDA Press Releases and MedWatch Safety Alerts 
+              as they're published, with flexible timeframe options (24h/1w/1m) for comprehensive market analysis.
             </p>
           </div>
         </div>
@@ -305,16 +326,16 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
 
   return (
     <div className="space-y-4">
-      {/* Real-Time Status Bar */}
+      {/* Multi-Source Real-Time Status Bar */}
       <div className="bg-zinc-900 rounded-lg p-3 border border-zinc-800">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
               <span className="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
-              Live Feed
+              Live Multi-Feed
             </span>
             <span className="text-sm text-gray-400">
-              {newsItems.length} items • Auto-refresh every 2min
+              {newsItems.length} items • Press Releases + MedWatch • Auto-refresh every 2min
             </span>
             {lastUpdate && (
               <span className="text-xs text-gray-500">
@@ -328,7 +349,7 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
               <span className="text-xs text-amber-400 mr-2">Update failed</span>
             )}
             <button
-              onClick={() => triggerFDAPipeline(24)}
+              onClick={() => triggerFDAPipeline('24h')}
               disabled={triggering}
               className="text-xs bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 px-3 py-1 rounded transition-colors disabled:opacity-50"
             >
@@ -349,7 +370,9 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
             category={item.category}
             timestamp={item.timestamp}
             ticker={item.ticker}
-            relevanceScore={item.relevanceScore}
+            exchange={item.exchange}
+            sentiment={item.sentiment}
+            sentimentStrength={item.sentimentStrength}
             source={item.source}
             marketImpact={item.marketImpact}
             tags={item.tags}
@@ -375,7 +398,7 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
       {newsItems.length > 0 && (
         <div className="text-center">
           <p className="text-xs text-gray-500">
-            Real-time updates from FDA RSS feed • Auto-refresh every 2 minutes • Default: Last 24 hours
+            Real-time updates from FDA Multi-RSS feeds (Press Releases + MedWatch Alerts) • Auto-refresh every 2 minutes • Configurable timeframes: 24h/1w/1m
           </p>
         </div>
       )}

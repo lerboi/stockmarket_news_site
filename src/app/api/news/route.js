@@ -1,4 +1,4 @@
-// src/app/api/news/route.js - Updated to include sentiment and exchange
+// src/app/api/news/route.js - Updated to support timeframe filtering
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
@@ -14,8 +14,8 @@ export async function GET(request) {
     const offset = parseInt(searchParams.get('offset') || '0');
     const priority = searchParams.get('priority') || 'all';
     const category = searchParams.get('category') || 'all';
-    const timeframe = searchParams.get('timeframe') || '24h';
-    const sentiment = searchParams.get('sentiment') || 'all'; // New filter
+    const timeframe = searchParams.get('timeframe') || '24h'; // Changed from individual hours
+    const sentiment = searchParams.get('sentiment') || 'all';
 
     // Build query using direct table queries
     let query = supabase
@@ -58,18 +58,10 @@ export async function GET(request) {
       query = query.eq('fda_announcements.announcement_type', category);
     }
 
-    // Apply timeframe filter
-    const timeframeHours = {
-      '1h': 1,
-      '24h': 24,
-      '3d': 72,
-      '1w': 168
-    };
-
-    if (timeframeHours[timeframe]) {
-      const hoursAgo = new Date();
-      hoursAgo.setHours(hoursAgo.getHours() - timeframeHours[timeframe]);
-      query = query.gte('published_at', hoursAgo.toISOString());
+    // Apply timeframe filter - now uses more flexible date range
+    const cutoffTime = calculateTimeframeCutoff(timeframe);
+    if (cutoffTime) {
+      query = query.gte('published_at', cutoffTime.toISOString());
     }
 
     const { data: newsItems, error } = await query;
@@ -86,7 +78,7 @@ export async function GET(request) {
       summary: item.ai_summary,
       priority: item.priority_level,
       category: mapCategoryForDisplay(item.fda_announcements?.announcement_type),
-      timestamp: formatTimestamp(item.published_at),
+      timestamp: formatTimestamp(item.fda_announcements?.announcement_date), // Use RSS publication date, not our processing date
       ticker: item.stock_ticker,
       exchange: item.stock_exchange,
       sentiment: item.sentiment,
@@ -95,7 +87,9 @@ export async function GET(request) {
       marketImpact: item.market_impact_assessment,
       tags: item.tags || [],
       companyName: item.fda_announcements?.sponsor_name,
-      announcementDate: item.fda_announcements?.announcement_date
+      announcementDate: item.fda_announcements?.announcement_date,
+      publishedAt: item.published_at, // Keep our processing timestamp for reference
+      rssPublicationDate: item.fda_announcements?.announcement_date // Explicit RSS date for clarity
     }));
 
     return NextResponse.json({
@@ -111,6 +105,7 @@ export async function GET(request) {
         sentiment,
         timeframe
       },
+      timeframe_cutoff: cutoffTime ? cutoffTime.toISOString() : null,
       timestamp: new Date().toISOString()
     });
 
@@ -127,6 +122,30 @@ export async function GET(request) {
   }
 }
 
+// Calculate cutoff time for timeframe filtering
+function calculateTimeframeCutoff(timeframe) {
+  const now = new Date();
+  const cutoffTime = new Date(now);
+
+  switch (timeframe) {
+    case '24h':
+      cutoffTime.setHours(cutoffTime.getHours() - 24);
+      return cutoffTime;
+    case '1w':
+      cutoffTime.setDate(cutoffTime.getDate() - 7);
+      return cutoffTime;
+    case '1m':
+      cutoffTime.setMonth(cutoffTime.getMonth() - 1);
+      return cutoffTime;
+    case 'all':
+      return null; // No time filtering
+    default:
+      // Default to 24 hours for unknown timeframes
+      cutoffTime.setHours(cutoffTime.getHours() - 24);
+      return cutoffTime;
+  }
+}
+
 // Map database categories to display-friendly names
 function mapCategoryForDisplay(dbCategory) {
   const categoryMap = {
@@ -139,7 +158,7 @@ function mapCategoryForDisplay(dbCategory) {
   return categoryMap[dbCategory] || 'regulatory';
 }
 
-// Format timestamp for display
+// Format timestamp for display with relative time
 function formatTimestamp(isoString) {
   if (!isoString) return 'Unknown';
   

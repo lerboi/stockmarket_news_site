@@ -1,30 +1,30 @@
-// src/app/api/admin/trigger-pipeline/route.js - Simplified
+// src/app/api/admin/trigger-pipeline/route.js - Updated for multi-source RSS with timeframe options
 import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    const { action = 'full', limit = 25, hours = 24 } = await request.json();
+    const { action = 'full', limit = 25, timeframe = '24h' } = await request.json(); // Changed from hours to timeframe
     
     const baseUrl = process.env.NODE_ENV === 'development' 
       ? 'http://localhost:3000'
       : request.url.split('/api/admin')[0];
     const results = [];
 
-    console.log(`Triggering FDA RSS pipeline: ${action} (last ${hours} hours)`);
+    console.log(`Triggering FDA Multi-RSS pipeline: ${action} (timeframe: ${timeframe})`);
 
-    // Step 1: Ingest RSS data (no type filtering)
+    // Step 1: Ingest RSS data from both sources
     if (action === 'full' || action === 'ingest') {
-      console.log(`Step 1: Ingesting FDA RSS data from last ${hours} hours...`);
+      console.log(`Step 1: Ingesting FDA Multi-RSS data for timeframe ${timeframe}...`);
       
       try {
         const ingestResponse = await fetch(`${baseUrl}/api/fda/ingest`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ limit, hours })
+          body: JSON.stringify({ limit, timeframe }) // Use timeframe instead of hours
         });
         
         if (!ingestResponse.ok) {
-          throw new Error(`RSS Ingestion failed: ${ingestResponse.status}`);
+          throw new Error(`Multi-RSS Ingestion failed: ${ingestResponse.status}`);
         }
 
         const ingestResult = await ingestResponse.json();
@@ -37,14 +37,18 @@ export async function POST(request) {
         if (!ingestResult.success) {
           return NextResponse.json({
             success: false,
-            error: `RSS ingestion failed: ${ingestResult.error}`,
+            error: `Multi-RSS ingestion failed: ${ingestResult.error}`,
             results
           });
         }
 
-        console.log(`✓ Ingested ${ingestResult.ingested} FDA RSS announcements`);
+        const sourceBreakdownText = ingestResult.source_breakdown ? 
+          `Press Releases: ${ingestResult.source_breakdown['FDA Press Releases'] || 0}, MedWatch: ${ingestResult.source_breakdown['FDA MedWatch Alerts'] || 0}` : 
+          'Mixed sources';
+        
+        console.log(`✓ Ingested ${ingestResult.ingested} FDA announcements (${sourceBreakdownText})`);
       } catch (ingestError) {
-        console.error('RSS Ingestion failed:', ingestError);
+        console.error('Multi-RSS Ingestion failed:', ingestError);
         results.push({
           step: 'ingest',
           success: false,
@@ -53,7 +57,7 @@ export async function POST(request) {
         
         return NextResponse.json({
           success: false,
-          error: `RSS Ingestion failed: ${ingestError.message}`,
+          error: `Multi-RSS Ingestion failed: ${ingestError.message}`,
           results
         });
       }
@@ -98,26 +102,45 @@ export async function POST(request) {
       }
     }
 
-    // Summary
+    // Summary with enhanced details
+    const ingestData = results.find(r => r.step === 'ingest')?.data;
+    const processData = results.find(r => r.step === 'process')?.data;
+
     const summary = {
-      ingested: results.find(r => r.step === 'ingest')?.data?.ingested || 0,
-      processed: results.find(r => r.step === 'process')?.data?.processed || 0,
-      failed: results.find(r => r.step === 'process')?.data?.failed || 0,
-      hours_searched: hours,
-      data_source: 'FDA RSS Feed'
+      ingested: ingestData?.ingested || 0,
+      processed: processData?.processed || 0,
+      failed: processData?.failed || 0,
+      timeframe: timeframe,
+      data_sources: ['FDA Press Releases', 'FDA MedWatch Alerts'],
+      source_breakdown: ingestData?.source_breakdown || null,
+      filtered_out: ingestData?.filtered_out || 0,
+      public_companies_found: ingestData?.public_companies_found || 0
     };
+
+    // Generate descriptive message
+    let message = `Multi-RSS Pipeline: ${summary.ingested} ingested`;
+    if (summary.processed > 0) {
+      message += `, ${summary.processed} processed`;
+    }
+    message += ` (${timeframe})`;
+
+    if (summary.source_breakdown) {
+      const pressCount = summary.source_breakdown['FDA Press Releases'] || 0;
+      const medwatchCount = summary.source_breakdown['FDA MedWatch Alerts'] || 0;
+      message += ` - PR: ${pressCount}, MW: ${medwatchCount}`;
+    }
 
     return NextResponse.json({
       success: true,
       action,
       summary,
       results,
-      message: `RSS Pipeline: ${summary.ingested} ingested, ${summary.processed} processed (${hours}h)`,
+      message,
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error('RSS Pipeline error:', error);
+    console.error('Multi-RSS Pipeline error:', error);
     return NextResponse.json(
       { 
         success: false, 
@@ -129,7 +152,7 @@ export async function POST(request) {
   }
 }
 
-// GET endpoint
+// GET endpoint with enhanced status
 export async function GET(request) {
   try {
     const baseUrl = process.env.NODE_ENV === 'development' 
@@ -147,21 +170,46 @@ export async function GET(request) {
     return NextResponse.json({
       success: true,
       pipeline_status: 'ready',
-      pipeline_type: 'FDA RSS Feed Only',
-      data_source: 'Real-time FDA Press Releases',
+      pipeline_type: 'FDA Multi-RSS Feed',
+      data_sources: [
+        {
+          name: 'FDA Press Releases',
+          url: 'https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml',
+          types: ['drug_approval', 'device_approval', 'regulatory']
+        },
+        {
+          name: 'FDA MedWatch Alerts', 
+          url: 'https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/medwatch/rss.xml',
+          types: ['safety_alert', 'recall']
+        }
+      ],
+      timeframe_options: [
+        { value: '24h', label: '24 Hours', description: 'Real-time breaking news' },
+        { value: '1w', label: '1 Week', description: 'Weekly market analysis' },
+        { value: '1m', label: '1 Month', description: 'Monthly trend analysis' }
+      ],
       stats: stats,
       available_endpoints: [
-        '/api/fda/rss-feed (RSS parser)',
-        '/api/fda/all (main endpoint)',
-        '/api/fda/ingest (ingestion)', 
+        '/api/fda/rss-feed (Multi-RSS parser)',
+        '/api/fda/all (Combined endpoint)',
+        '/api/fda/ingest (Multi-source ingestion)', 
         '/api/fda/process (AI processing)'
       ],
       features: [
-        'Single RSS data source',
-        'Real-time processing (1-hour windows)', 
+        'Dual RSS data sources (Press Releases + MedWatch)',
+        'Flexible timeframe processing (24h/1w/1m)', 
         'Client-side filtering by announcement_type',
         'AI public company filtering',
-        'Breaking news detection'
+        'Enhanced breaking news detection',
+        'Source-specific categorization'
+      ],
+      processing_flow: [
+        '1. Fetch both RSS feeds concurrently',
+        '2. Parse and categorize by source type',
+        '3. Time-based filtering (24h/1w/1m)',
+        '4. AI filter for public companies only',
+        '5. Real-time sentiment analysis',
+        '6. Relevance scoring and prioritization'
       ],
       timestamp: new Date().toISOString()
     });
