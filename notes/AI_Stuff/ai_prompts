@@ -14,9 +14,7 @@ For the design, make it mostly dark themed background white brighter text. Ensur
 
 
 For the Dashboard page:
-- Remove the Save, Share, and hashtag stuff. This is not a social media, it is for penystock traders to get updated relevant news.
-- Reduce the number of emojits and color in the filter tab. Theres too many emojis and stuff, and it looks too cluttered. Go for more of a minimalistic look.
-- Need to show What ticker the company is tradnig under, and what stock exchagne they are trading in. Use AI to discover this info if needed, but display it prominently and well.
+- My /api/fda/device-approvals, drug approvals, and all is fetching news from 2024. I want it to only fetch news from the last 30 minutes on this day. Without writing any code, can you identify the issue and let me konw what the issue is?
 
 For ProfilelModal:
 - Remove Account Status

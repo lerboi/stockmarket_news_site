@@ -1,4 +1,4 @@
-// src/components/dashboard/NewsFilters.jsx
+// src/components/dashboard/NewsFilters.jsx - Updated with sentiment filter
 'use client';
 import { useState, useEffect } from 'react';
 
@@ -6,6 +6,7 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
   const [selectedFilters, setSelectedFilters] = useState({
     priority: 'all',
     category: 'all',
+    sentiment: 'all',
     timeframe: '24h',
     ...currentFilters
   });
@@ -34,6 +35,13 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
     { value: 'regulatory', label: 'Regulatory' }
   ];
 
+  const sentimentOptions = [
+    { value: 'all', label: 'All Sentiment' },
+    { value: 'bullish', label: 'Bullish 📈' },
+    { value: 'bearish', label: 'Bearish 📉' },
+    { value: 'neutral', label: 'Neutral ➡️' }
+  ];
+
   const timeframeOptions = [
     { value: '1h', label: '1 Hour' },
     { value: '24h', label: '24 Hours' },
@@ -58,6 +66,7 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
     const defaultFilters = {
       priority: 'all',
       category: 'all',
+      sentiment: 'all',
       timeframe: '24h'
     };
     setSelectedFilters(defaultFilters);
@@ -77,6 +86,9 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
     }
     if (selectedFilters.category !== 'all') {
       summary.push(categoryOptions.find(opt => opt.value === selectedFilters.category)?.label);
+    }
+    if (selectedFilters.sentiment !== 'all') {
+      summary.push(sentimentOptions.find(opt => opt.value === selectedFilters.sentiment)?.label);
     }
     if (selectedFilters.timeframe !== 'all') {
       summary.push(timeframeOptions.find(opt => opt.value === selectedFilters.timeframe)?.label);
@@ -125,7 +137,7 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
 
       {/* Expanded Content */}
       <div className={`transition-all duration-300 ease-in-out overflow-hidden ${
-        isExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
+        isExpanded ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'
       }`}>
         <div className="p-4 pt-0 border-t border-zinc-800">
           {/* Quick Filter Buttons */}
@@ -136,27 +148,27 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => {
+                  handleFilterChange('sentiment', 'bullish');
                   handleFilterChange('priority', 'high');
-                  handleFilterChange('category', 'drug_approval');
                 }}
                 className="text-xs bg-green-600/20 hover:bg-green-600/30 text-green-300 px-3 py-2 rounded transition-colors"
               >
-                High Priority Drugs
+                🚀 Bullish Catalysts
               </button>
               <button
                 onClick={() => {
-                  handleFilterChange('priority', 'high');
+                  handleFilterChange('sentiment', 'bearish');
                   handleFilterChange('category', 'safety_alert');
                 }}
                 className="text-xs bg-red-600/20 hover:bg-red-600/30 text-red-300 px-3 py-2 rounded transition-colors"
               >
-                Safety Alerts
+                ⚠️ Risk Alerts
               </button>
               <button
                 onClick={() => handleFilterChange('timeframe', '1h')}
                 className="text-xs bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 px-3 py-2 rounded transition-colors"
               >
-                Latest News
+                ⚡ Breaking News
               </button>
             </div>
           </div>
@@ -190,6 +202,35 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
             </div>
           </div>
 
+          {/* Sentiment Filter */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-300 mb-3">
+              AI Sentiment
+            </label>
+            <div className="space-y-2">
+              {sentimentOptions.map(option => (
+                <label
+                  key={option.value}
+                  className={`flex items-center space-x-3 p-2 rounded cursor-pointer transition-all hover:bg-zinc-800 ${
+                    selectedFilters.sentiment === option.value 
+                      ? 'bg-green-600/20 border border-green-600/50 text-green-300' 
+                      : 'text-gray-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="sentiment"
+                    value={option.value}
+                    checked={selectedFilters.sentiment === option.value}
+                    onChange={(e) => handleFilterChange('sentiment', e.target.value)}
+                    className="text-green-600 focus:ring-green-500 focus:ring-2"
+                  />
+                  <span className="text-sm font-medium">{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           {/* Category Filter */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-300 mb-3">
@@ -201,7 +242,7 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
                   key={option.value}
                   className={`flex items-center space-x-3 p-2 rounded cursor-pointer transition-all hover:bg-zinc-800 ${
                     selectedFilters.category === option.value 
-                      ? 'bg-green-600/20 border border-green-600/50 text-green-300' 
+                      ? 'bg-amber-600/20 border border-amber-600/50 text-amber-300' 
                       : 'text-gray-300'
                   }`}
                 >
@@ -211,7 +252,7 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
                     value={option.value}
                     checked={selectedFilters.category === option.value}
                     onChange={(e) => handleFilterChange('category', e.target.value)}
-                    className="text-green-600 focus:ring-green-500 focus:ring-2"
+                    className="text-amber-600 focus:ring-amber-500 focus:ring-2"
                   />
                   <span className="text-sm font-medium">{option.label}</span>
                 </label>

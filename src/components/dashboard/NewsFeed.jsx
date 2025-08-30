@@ -1,4 +1,4 @@
-// src/components/dashboard/NewsFeed.js - Modified to trigger stats updates
+// src/components/dashboard/NewsFeed.jsx - Updated for real-time RSS processing
 'use client';
 import { useState, useEffect } from 'react';
 import NewsCard from './NewsCard';
@@ -8,9 +8,14 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [triggering, setTriggering] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState(null);
 
   useEffect(() => {
     fetchNews();
+    
+    // Auto-refresh every 2 minutes for real-time updates
+    const interval = setInterval(fetchNews, 120000);
+    return () => clearInterval(interval);
   }, [filters]);
 
   const fetchNews = async () => {
@@ -29,6 +34,7 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
       if (result.success) {
         setNewsItems(result.data);
         setError(null);
+        setLastUpdate(new Date());
         
         // Trigger stats update when news is successfully fetched
         if (onStatsUpdate) {
@@ -45,28 +51,42 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
     }
   };
 
-  const triggerFDAPipeline = async () => {
+  const triggerFDAPipeline = async (hours = 24) => {
     try {
       setTriggering(true);
+      setError(null);
+      
       const response = await fetch('/api/admin/trigger-pipeline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'full', limit: 10 })
+        body: JSON.stringify({ 
+          action: 'full', 
+          limit: 15, 
+          hours: hours // Real-time: last 1 hour by default
+        })
       });
       
       const result = await response.json();
       
       if (result.success) {
+        console.log(`RSS Pipeline success:`, result.summary);
+        
+        // Show success message
+        if (result.summary.ingested === 0) {
+          setError(`No new FDA announcements found in the last ${hours} hour${hours > 1 ? 's' : ''}`);
+        }
+        
         // Wait a moment then refresh the news feed and stats
         setTimeout(() => {
           fetchNews(); // This will trigger stats update via onStatsUpdate
+          setError(null);
         }, 3000);
       } else {
-        setError(`Pipeline failed: ${result.error}`);
+        setError(`RSS Pipeline failed: ${result.error}`);
       }
     } catch (err) {
-      setError('Failed to trigger FDA pipeline');
-      console.error('Pipeline trigger error:', err);
+      setError('Failed to trigger FDA RSS pipeline');
+      console.error('RSS Pipeline trigger error:', err);
     } finally {
       setTriggering(false);
     }
@@ -125,12 +145,12 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
     );
   }
 
-  if (error) {
+  if (error && newsItems.length === 0) {
     return (
       <div className="bg-zinc-900 rounded-lg p-8 border border-zinc-800 text-center">
         <div className="text-red-400 text-2xl mb-4">⚠</div>
         <h3 className="text-xl font-medium text-white mb-2">
-          Connection Error
+          {error.includes('No new FDA') ? 'No Recent Announcements' : 'Connection Error'}
         </h3>
         <p className="text-gray-400 mb-6">{error}</p>
         <div className="flex justify-center space-x-4">
@@ -141,11 +161,18 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
             Retry Connection
           </button>
           <button
-            onClick={triggerFDAPipeline}
+            onClick={() => triggerFDAPipeline(24)}
             disabled={triggering}
             className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded transition-colors disabled:opacity-50"
           >
-            {triggering ? 'Processing...' : 'Trigger FDA Pipeline'}
+            {triggering ? 'Processing...' : 'Check Last 24 Hours'}
+          </button>
+          <button
+            onClick={() => triggerFDAPipeline(6)}
+            disabled={triggering}
+            className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded transition-colors disabled:opacity-50"
+          >
+            {triggering ? 'Processing...' : 'Check Last 6 Hours'}
           </button>
         </div>
       </div>
@@ -155,17 +182,22 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
   if (newsItems.length === 0) {
     return (
       <div className="space-y-4">
-        {/* Status Header */}
+        {/* Real-Time Status Header */}
         <div className="bg-zinc-900 rounded-lg p-4 border border-zinc-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                <span className="w-2 h-2 bg-amber-400 rounded-full mr-2 animate-pulse"></span>
-                Waiting for Data
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                <span className="w-2 h-2 bg-blue-400 rounded-full mr-2 animate-pulse"></span>
+                Real-Time RSS Feed
               </span>
               <span className="text-sm text-gray-400">
-                No FDA announcements processed yet
+                Monitoring FDA press releases
               </span>
+              {lastUpdate && (
+                <span className="text-xs text-gray-500">
+                  • Updated {lastUpdate.toLocaleTimeString()}
+                </span>
+              )}
             </div>
             <button 
               onClick={fetchNews}
@@ -181,57 +213,74 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
 
         {/* Empty State */}
         <div className="bg-zinc-900 rounded-lg p-8 border border-zinc-800 text-center">
-          <div className="text-4xl mb-4">📊</div>
+          <div className="text-4xl mb-4">📡</div>
           <h3 className="text-xl font-medium text-white mb-2">
-            Ready to Start Analysis
+            Ready for Real-Time Analysis
           </h3>
           <p className="text-gray-400 max-w-md mx-auto mb-6">
-            Click below to fetch and analyze recent FDA announcements. The AI will process them and display relevant penny stock trading intelligence.
+            Click below to fetch and analyze recent FDA press releases. The AI will process them in real-time and display relevant penny stock trading intelligence.
           </p>
           
           {/* Process Overview */}
           <div className="bg-zinc-800 rounded-lg p-4 mb-6 text-left max-w-md mx-auto">
-            <h4 className="text-sm font-medium text-white mb-2">Analysis Process:</h4>
+            <h4 className="text-sm font-medium text-white mb-2">Real-Time Process:</h4>
             <ul className="text-xs text-gray-400 space-y-1 list-disc list-inside">
-              <li>Fetch FDA drug approvals & safety alerts</li>
-              <li>AI filter for publicly traded companies only</li>
-              <li>AI analysis for market impact scoring</li>
-              <li>Display high-relevance trading news</li>
+              <li>Parse FDA RSS press releases</li>
+              <li>Filter by time (last 1-24 hours)</li>
+              <li>AI filter for publicly traded companies</li>
+              <li>Real-time relevance scoring</li>
+              <li>Breaking news alerts</li>
             </ul>
           </div>
 
-          <div className="flex justify-center space-x-4">
+          <div className="flex justify-center space-x-3 flex-wrap gap-2">
             <button
-              onClick={triggerFDAPipeline}
+              onClick={() => triggerFDAPipeline(24)}
               disabled={triggering}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded transition-colors disabled:opacity-50 font-medium"
             >
               {triggering ? (
                 <>
                   <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
-                  Processing FDA Data...
+                  Processing...
                 </>
               ) : (
-                'Fetch FDA News'
+                'Last 24 Hours'
               )}
             </button>
+            
+            <button
+              onClick={() => triggerFDAPipeline(6)}
+              disabled={triggering}
+              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded transition-colors disabled:opacity-50 font-medium"
+            >
+              Last 6 Hours
+            </button>
+            
+            <button
+              onClick={() => triggerFDAPipeline(1)}
+              disabled={triggering}
+              className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded transition-colors disabled:opacity-50 font-medium"
+            >
+              Last Hour
+            </button>
+            
             <button
               onClick={() => {
                 setNewsItems([{
-                  id: 'demo',
-                  title: 'Demo: FDA Approves Breakthrough Drug for Rare Disease',
-                  summary: 'This is a demo news item showing the interface. Real FDA news will appear here after processing.',
+                  id: 'demo-rss',
+                  title: 'Demo: FDA Approves Breakthrough Cancer Drug via RSS',
+                  summary: 'This is a demo showing real-time RSS processing. Live FDA press releases will appear here within minutes of publication.',
                   priority: 'high',
                   category: 'drug_approval',
                   timestamp: 'Just now',
                   ticker: 'DEMO',
-                  relevanceScore: 85,
-                  source: 'FDA (Demo)',
-                  marketImpact: 'Expected positive catalyst for small biotech companies in rare disease space.',
-                  tags: ['demo', 'drug_approval', 'biotech'],
-                  companyName: 'Demo Pharmaceutical Inc'
+                  relevanceScore: 92,
+                  source: 'FDA RSS (Demo)',
+                  marketImpact: 'Expected immediate positive catalyst - breaking news from official FDA press release.',
+                  tags: ['breaking_news', 'real_time', 'drug_approval', 'cancer'],
+                  companyName: 'Demo Biotech Inc'
                 }]);
-                // Trigger stats update when demo is loaded
                 if (onStatsUpdate) {
                   onStatsUpdate();
                 }
@@ -241,6 +290,14 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
               Preview Demo
             </button>
           </div>
+          
+          {/* Info Note */}
+          <div className="mt-6 p-3 bg-blue-900/20 border border-blue-800 rounded-lg">
+            <p className="text-xs text-blue-300">
+              💡 <strong>Real-Time:</strong> This system processes FDA press releases as they're published, 
+              typically within 5-15 minutes of official release.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -248,6 +305,39 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
 
   return (
     <div className="space-y-4">
+      {/* Real-Time Status Bar */}
+      <div className="bg-zinc-900 rounded-lg p-3 border border-zinc-800">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+              <span className="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
+              Live Feed
+            </span>
+            <span className="text-sm text-gray-400">
+              {newsItems.length} items • Auto-refresh every 2min
+            </span>
+            {lastUpdate && (
+              <span className="text-xs text-gray-500">
+                Updated {lastUpdate.toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            {error && (
+              <span className="text-xs text-amber-400 mr-2">Update failed</span>
+            )}
+            <button
+              onClick={() => triggerFDAPipeline(24)}
+              disabled={triggering}
+              className="text-xs bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 px-3 py-1 rounded transition-colors disabled:opacity-50"
+            >
+              {triggering ? 'Checking...' : 'Check Now'}
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* News Items */}
       <div className="space-y-4">
         {newsItems.map((item) => (
@@ -285,7 +375,7 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
       {newsItems.length > 0 && (
         <div className="text-center">
           <p className="text-xs text-gray-500">
-            Updates when new FDA announcements are processed
+            Real-time updates from FDA RSS feed • Auto-refresh every 2 minutes • Default: Last 24 hours
           </p>
         </div>
       )}

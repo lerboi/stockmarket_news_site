@@ -15,6 +15,7 @@
     "@anthropic-ai/sdk": "^0.60.0",
     "@next-auth/supabase-adapter": "^0.2.1",
     "@supabase/supabase-js": "^2.56.0",
+    "@types/xml2js": "^0.4.14",
     "bcryptjs": "^3.0.2",
     "concurrently": "^9.2.1",
     "next": "15.5.2",
@@ -22,7 +23,8 @@
     "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

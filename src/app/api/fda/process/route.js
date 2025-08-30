@@ -1,4 +1,4 @@
-// src/app/api/fda/process/route.js - Updated for batch processing
+// src/app/api/fda/process/route.js - Updated with sentiment analysis
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
@@ -13,20 +13,27 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// Cache for FDA data source ID
+let fdaSourceId = null;
+
 export async function POST(request) {
   try {
-    const { batchSize = 12, priorityOnly = false } = await request.json(); // Default 12 = 3 batches of 4
-    const BATCH_SIZE = 4; // Fixed batch size for optimal Claude performance
+    const { batchSize = 12, priorityOnly = false } = await request.json();
+    const BATCH_SIZE = 2; // Fixed batch size for optimal Claude performance
 
     console.log(`Starting batch AI processing (total size: ${batchSize})`);
 
-    // Get pending items from processing queue
+    // Ensure FDA data source exists
+    await ensureFDADataSource();
+
+    // Get pending items from processing queue (today's data only)
+    const today = new Date().toISOString().split('T')[0];
     let query = supabase
       .from('processing_queue')
       .select(`
         id,
         fda_announcement_id,
-        fda_announcements (
+        fda_announcements!inner (
           id,
           fda_id,
           announcement_type,
@@ -40,6 +47,7 @@ export async function POST(request) {
         )
       `)
       .eq('status', 'pending')
+      .eq('fda_announcements.announcement_date', today)
       .order('scheduled_at', { ascending: true })
       .limit(batchSize);
 
@@ -57,7 +65,7 @@ export async function POST(request) {
 
     console.log(`Processing ${queueItems.length} FDA announcements in batches of ${BATCH_SIZE}`);
 
-    // Split into batches of 4
+    // Split into batches of 2
     const batches = [];
     for (let i = 0; i < queueItems.length; i += BATCH_SIZE) {
       batches.push(queueItems.slice(i, i + BATCH_SIZE));
@@ -131,6 +139,63 @@ export async function POST(request) {
   }
 }
 
+// Ensure FDA data source exists and cache the ID
+async function ensureFDADataSource() {
+  if (fdaSourceId) {
+    return fdaSourceId;
+  }
+
+  try {
+    // Check if FDA data source already exists
+    const { data: existingSource, error: selectError } = await supabase
+      .from('data_sources')
+      .select('id')
+      .eq('source_name', 'FDA')
+      .single();
+
+    if (existingSource) {
+      fdaSourceId = existingSource.id;
+      return fdaSourceId;
+    }
+
+    // Create FDA data source if it doesn't exist
+    const { data: newSource, error: insertError } = await supabase
+      .from('data_sources')
+      .insert({
+        source_name: 'FDA',
+        source_type: 'regulatory',
+        is_active: true,
+        api_config: {
+          base_url: 'https://api.fda.gov',
+          endpoints: {
+            drug_approvals: '/drug/drugsfda.json',
+            safety_alerts: '/food/enforcement.json',
+            device_approvals: '/device/510k.json'
+          }
+        },
+        processing_config: {
+          batch_size: 50,
+          retry_attempts: 3,
+          ai_filtering_enabled: true
+        }
+      })
+      .select('id')
+      .single();
+
+    if (insertError) {
+      throw insertError;
+    }
+
+    fdaSourceId = newSource.id;
+    console.log(`Created FDA data source with ID: ${fdaSourceId}`);
+    return fdaSourceId;
+
+  } catch (error) {
+    console.error('Error ensuring FDA data source:', error);
+    throw new Error(`Failed to create/retrieve FDA data source: ${error.message}`);
+  }
+}
+
 // Main batch processing function
 async function processBatchWithAI(queueItems) {
   try {
@@ -139,7 +204,7 @@ async function processBatchWithAI(queueItems) {
       throw new Error('No queue items provided for batch processing');
     }
 
-    const batchItems = queueItems.slice(0, 4); // Ensure max 4 items
+    const batchItems = queueItems.slice(0, 2); // Ensure max 2 items
     
     console.log(`Processing batch of ${batchItems.length} FDA announcements`);
 
@@ -207,13 +272,13 @@ async function processBatchWithAI(queueItems) {
 async function batchAnalyzeWithClaude(batchItems) {
   try {
     // Build the batch prompt
-    const prompt = buildBatchPrompt(batchItems);
+    const prompt = buildEnhancedBatchPrompt(batchItems);
     
-    console.log(`Sending batch of ${batchItems.length} items to Claude`);
+    console.log(`Sending batch of ${batchItems.length} items to Claude for sentiment analysis`);
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 2500,
+      max_tokens: 3000,
       temperature: 0.1, // Very low temperature for consistent structured output
       messages: [
         {
@@ -272,8 +337,8 @@ async function batchAnalyzeWithClaude(batchItems) {
   }
 }
 
-// Build the comprehensive batch prompt
-function buildBatchPrompt(batchItems) {
+// Updated buildEnhancedBatchPrompt function for more professional analysis
+function buildEnhancedBatchPrompt(batchItems) {
   const announcements = batchItems.map((item, index) => {
     const announcement = item.fda_announcements;
     return `${index + 1}. ID: "${announcement.id}"
@@ -285,31 +350,46 @@ function buildBatchPrompt(batchItems) {
    Date: ${announcement.announcement_date}`;
   }).join('\n\n');
 
-  return `You are a financial analyst specializing in penny stock trading intelligence. Analyze these ${batchItems.length} FDA announcements for market impact.
+  return `You are a senior biotech/pharmaceutical stock analyst specializing in penny stock trading intelligence. Analyze these ${batchItems.length} FDA announcements for market impact and sentiment.
 
 CRITICAL REQUIREMENTS:
 1. Return ONLY a valid JSON array
 2. Must contain exactly ${batchItems.length} objects
 3. Objects must be in the same order as input
 4. No additional text or explanation
+5. MUST provide stock_ticker and stock_exchange for ALL public companies
 
 Required JSON structure for each announcement:
 {
   "fda_announcement_id": "exact-uuid-from-input",
-  "stock_ticker": "TICKER" or null,
+  "stock_ticker": "TICKER" (REQUIRED for public companies, null only for private/unknown),
+  "stock_exchange": "NASDAQ" or "NYSE" or "OTC" or "AMEX" (REQUIRED when ticker provided),
   "relevance_score": 0-100,
   "priority_level": "high" or "medium" or "low",
-  "ai_summary": "2-3 sentence trading-focused summary",
-  "market_impact_assessment": "Expected price movement and reasoning",
+  "sentiment": "bullish" or "bearish" or "neutral",
+  "sentiment_strength": 0-100,
+  "ai_summary": "2-3 sentence professional summary for institutional investors",
+  "market_impact_assessment": "General market impact description - NO specific price predictions",
   "tags": ["tag1", "tag2", "tag3"]
 }
 
-Scoring guidelines:
-- Drug approvals: 60-95 (high if breakthrough/first-in-class)
-- Safety alerts: 70-95 (high for Class I recalls)  
-- Device approvals: 40-75 (medium unless novel technology)
-- Stock ticker: Use exact symbol (NVAX, MRNA, etc.) or null
-- Tags: 3-5 relevant keywords (biotech, drug_approval, safety_alert, etc.)
+SENTIMENT ANALYSIS:
+- BULLISH: Drug approvals (80-100), device clearances (60-79), minor approvals (40-59)
+- BEARISH: Class I recalls (80-100), safety alerts (60-79), minor recalls (40-59)
+- NEUTRAL: Routine updates (0-39)
+
+MARKET IMPACT GUIDELINES:
+- Use general terms like "positive catalyst", "negative pressure", "potential volatility"
+- DO NOT include specific percentage predictions (no "15-30%" type predictions)
+- Focus on qualitative impact: "strong upward momentum", "downward pressure expected", "mixed market reaction likely"
+- Mention trading volume expectations: "increased trading activity expected", "sustained investor interest likely"
+
+RELEVANCE SCORING:
+- Drug approvals: 70-95 (high priority if novel/first-in-class)
+- Safety alerts: 75-95 (high priority for Class I recalls)
+- Device approvals: 50-80 (medium priority unless breakthrough technology)
+
+STOCK EXCHANGES: NYSE, NASDAQ, OTC, AMEX - Research and select correct exchange for each ticker.
 
 FDA Announcements:
 
@@ -327,9 +407,14 @@ function validateAndCleanAnalysis(analysis, queueItem) {
     fda_announcement_id: analysis.fda_announcement_id || announcement.id,
     stock_ticker: analysis.stock_ticker && typeof analysis.stock_ticker === 'string' && analysis.stock_ticker !== 'null'
       ? analysis.stock_ticker.toUpperCase() : null,
+    stock_exchange: analysis.stock_exchange && typeof analysis.stock_exchange === 'string'
+      ? analysis.stock_exchange.toUpperCase() : null,
     relevance_score: Math.max(0, Math.min(100, parseInt(analysis.relevance_score) || 0)),
     priority_level: ['high', 'medium', 'low'].includes(analysis.priority_level) 
       ? analysis.priority_level : 'medium',
+    sentiment: ['bullish', 'bearish', 'neutral'].includes(analysis.sentiment)
+      ? analysis.sentiment : 'neutral',
+    sentiment_strength: Math.max(0, Math.min(100, parseInt(analysis.sentiment_strength) || 50)),
     ai_summary: typeof analysis.ai_summary === 'string' && analysis.ai_summary.length > 10
       ? analysis.ai_summary.substring(0, 500) : `${announcement.announcement_type.replace('_', ' ')} from ${announcement.sponsor_name || 'company'}`,
     market_impact_assessment: typeof analysis.market_impact_assessment === 'string' && analysis.market_impact_assessment.length > 5
@@ -354,6 +439,9 @@ async function saveBatchAnalysisResult(queueItem, analysis) {
   try {
     const announcement = queueItem.fda_announcements;
     
+    // Ensure we have the FDA source ID
+    await ensureFDADataSource();
+    
     // Only save if relevance score meets threshold
     if (analysis.relevance_score < 30) {
       await updateQueueStatus(queueItem.id, 'completed');
@@ -369,9 +457,13 @@ async function saveBatchAnalysisResult(queueItem, analysis) {
       .from('processed_news')
       .insert({
         fda_announcement_id: analysis.fda_announcement_id,
+        source_id: fdaSourceId,
         stock_ticker: analysis.stock_ticker,
+        stock_exchange: analysis.stock_exchange,
         relevance_score: analysis.relevance_score,
         priority_level: analysis.priority_level,
+        sentiment: analysis.sentiment,
+        sentiment_strength: analysis.sentiment_strength,
         ai_summary: analysis.ai_summary,
         market_impact_assessment: analysis.market_impact_assessment,
         tags: analysis.tags,
@@ -386,13 +478,14 @@ async function saveBatchAnalysisResult(queueItem, analysis) {
     // Mark queue item as completed
     await updateQueueStatus(queueItem.id, 'completed');
     
-    console.log(`✓ Saved analysis for ${announcement.fda_id} (score: ${analysis.relevance_score}, ticker: ${analysis.stock_ticker || 'none'})`);
+    console.log(`âœ" Saved analysis for ${announcement.fda_id} (score: ${analysis.relevance_score}, ticker: ${analysis.stock_ticker || 'none'}, sentiment: ${analysis.sentiment} ${analysis.sentiment_strength}%)`);
     
     return { 
       success: true, 
       processedNewsId: data.id, 
       published: analysis.relevance_score >= 50,
-      relevanceScore: analysis.relevance_score 
+      relevanceScore: analysis.relevance_score,
+      sentiment: `${analysis.sentiment} (${analysis.sentiment_strength}%)`
     };
 
   } catch (error) {
@@ -416,11 +509,22 @@ function getFallbackAnalysis(announcement) {
     'device_approval': 'medium'
   };
 
+  const fallbackSentiment = {
+    'drug_approval': { sentiment: 'bullish', strength: 70 },
+    'safety_alert': { sentiment: 'bearish', strength: 75 },
+    'device_approval': { sentiment: 'bullish', strength: 60 }
+  };
+
+  const sentimentData = fallbackSentiment[announcement.announcement_type] || { sentiment: 'neutral', strength: 50 };
+
   return {
     fda_announcement_id: announcement.id,
     stock_ticker: null,
+    stock_exchange: null,
     relevance_score: fallbackScores[announcement.announcement_type] || 50,
     priority_level: fallbackPriority[announcement.announcement_type] || 'medium',
+    sentiment: sentimentData.sentiment,
+    sentiment_strength: sentimentData.strength,
     ai_summary: `${announcement.announcement_type.replace('_', ' ')} announcement from ${announcement.sponsor_name || 'company'} regarding ${announcement.product_name || 'product'}.`,
     market_impact_assessment: 'AI analysis unavailable - manual review recommended',
     tags: [announcement.announcement_type, 'fda', 'regulatory']

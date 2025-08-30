@@ -1,4 +1,4 @@
-// src/app/api/news/route.js
+// src/app/api/news/route.js - Updated to include sentiment and exchange
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
@@ -11,19 +11,23 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '20');
-    const offset = parseInt(searchParams.get('offset') || '0'); // Changed from 'skip' to 'offset'
+    const offset = parseInt(searchParams.get('offset') || '0');
     const priority = searchParams.get('priority') || 'all';
     const category = searchParams.get('category') || 'all';
     const timeframe = searchParams.get('timeframe') || '24h';
+    const sentiment = searchParams.get('sentiment') || 'all'; // New filter
 
-    // Build query using direct table queries instead of the view for now
+    // Build query using direct table queries
     let query = supabase
       .from('processed_news')
       .select(`
         id,
         stock_ticker,
+        stock_exchange,
         relevance_score,
         priority_level,
+        sentiment,
+        sentiment_strength,
         ai_summary,
         market_impact_assessment,
         tags,
@@ -39,11 +43,15 @@ export async function GET(request) {
       `)
       .eq('is_published', true)
       .order('published_at', { ascending: false })
-      .range(offset, offset + limit - 1); // Use range instead of limit for proper pagination
+      .range(offset, offset + limit - 1);
 
     // Apply filters
     if (priority !== 'all') {
       query = query.eq('priority_level', priority);
+    }
+
+    if (sentiment !== 'all') {
+      query = query.eq('sentiment', sentiment);
     }
 
     if (category !== 'all') {
@@ -64,7 +72,7 @@ export async function GET(request) {
       query = query.gte('published_at', hoursAgo.toISOString());
     }
 
-    const { data: newsItems, error, count } = await query;
+    const { data: newsItems, error } = await query;
 
     if (error) {
       console.error('Supabase query error:', error);
@@ -80,7 +88,9 @@ export async function GET(request) {
       category: mapCategoryForDisplay(item.fda_announcements?.announcement_type),
       timestamp: formatTimestamp(item.published_at),
       ticker: item.stock_ticker,
-      relevanceScore: item.relevance_score,
+      exchange: item.stock_exchange,
+      sentiment: item.sentiment,
+      sentimentStrength: item.sentiment_strength,
       source: 'FDA',
       marketImpact: item.market_impact_assessment,
       tags: item.tags || [],
@@ -94,10 +104,11 @@ export async function GET(request) {
       count: transformedNews.length,
       offset: offset,
       limit: limit,
-      hasMore: transformedNews.length === limit, // If we got full limit, there might be more
+      hasMore: transformedNews.length === limit,
       filters: {
         priority,
-        category, 
+        category,
+        sentiment,
         timeframe
       },
       timestamp: new Date().toISOString()
