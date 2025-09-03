@@ -75,23 +75,23 @@ export async function POST(request) {
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
       console.log(`Processing batch ${i + 1}/${batches.length} (${batch.length} items)`);
-      
+
       try {
         const batchResult = await processBatchWithAI(batch);
         allResults.push(batchResult);
-        
+
         totalProcessed += batchResult.processed || 0;
         totalFailed += batchResult.failed || 0;
-        
+
         if (batchResult.errors) {
           allErrors.push(...batchResult.errors);
         }
-        
+
         // Small delay between batches to respect rate limits
         if (i < batches.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
-        
+
       } catch (batchError) {
         console.error(`Batch ${i + 1} failed:`, batchError);
         totalFailed += batch.length;
@@ -99,7 +99,7 @@ export async function POST(request) {
           batch: i + 1,
           error: batchError.message
         });
-        
+
         // Mark all items in failed batch as failed
         await Promise.allSettled(
           batch.map(item => updateQueueStatus(item.id, 'failed', `Batch processing failed: ${batchError.message}`))
@@ -122,8 +122,8 @@ export async function POST(request) {
   } catch (error) {
     console.error('Batch AI Processing Error:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: error.message,
         timestamp: new Date().toISOString()
       },
@@ -141,7 +141,7 @@ async function processBatchWithAI(queueItems) {
     }
 
     const batchItems = queueItems.slice(0, 2); // Ensure max 2 items
-    
+
     console.log(`Processing batch of ${batchItems.length} FDA announcements`);
 
     // Mark all items as processing
@@ -154,7 +154,7 @@ async function processBatchWithAI(queueItems) {
 
     // Process each result and save to database
     const processingResults = await Promise.allSettled(
-      aiAnalysisResults.map((analysis, index) => 
+      aiAnalysisResults.map((analysis, index) =>
         saveBatchAnalysisResult(batchItems[index], analysis)
       )
     );
@@ -187,7 +187,7 @@ async function processBatchWithAI(queueItems) {
 
   } catch (error) {
     console.error('Batch processing error:', error);
-    
+
     // Mark all items as failed if batch completely fails
     if (queueItems) {
       await Promise.allSettled(
@@ -207,35 +207,87 @@ async function processBatchWithAI(queueItems) {
 // Batch AI analysis with Claude - returns structured JSON array
 async function batchAnalyzeWithClaude(batchItems) {
   try {
-    // Build the batch prompt
-    const prompt = buildEnhancedBatchPrompt(batchItems);
-    
+    const announcements = batchItems.map((item, index) => {
+      const announcement = item.fda_announcements;
+      return `${index + 1}. ID: "${announcement.id}"
+   Type: ${announcement.announcement_type}
+   Title: "${announcement.title}"
+   Description: "${(announcement.description || '').substring(0, 400)}"
+   Company: ${announcement.sponsor_name || 'Unknown'}
+   Product: ${announcement.product_name || 'Unknown'}
+   Date: ${announcement.announcement_date}`;
+    }).join('\n\n');
+
     console.log(`Sending batch of ${batchItems.length} items to Claude for sentiment analysis`);
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 3000,
-      temperature: 0.1, // Very low temperature for consistent structured output
+      temperature: 0.1,
+      system: `I am a senior biotech/pharmaceutical stock analyst specializing in penny stock trading intelligence. I analyze FDA announcements for market impact and sentiment.
+
+CRITICAL REQUIREMENTS:
+1. I will return ONLY a valid JSON array
+2. I will include exactly the requested number of objects
+3. Objects will be in the same order as input
+4. No additional text or explanation
+5. I MUST provide stock_ticker and stock_exchange for ALL public companies
+
+Required JSON structure for each announcement:
+{
+  "fda_announcement_id": "exact-uuid-from-input",
+  "stock_ticker": "TICKER" (REQUIRED for public companies, null only for private/unknown),
+  "stock_exchange": "NASDAQ" or "NYSE" or "OTC" or "AMEX" (REQUIRED when ticker provided),
+  "relevance_score": 0-100,
+  "priority_level": "high" or "medium" or "low",
+  "sentiment": "bullish" or "bearish" or "neutral",
+  "sentiment_strength": 0-100,
+  "ai_summary": "2-3 sentence professional summary for institutional investors",
+  "market_impact_assessment": "General market impact description - NO specific price predictions",
+  "tags": ["tag1", "tag2", "tag3"]
+}
+
+SENTIMENT ANALYSIS:
+- BULLISH: Drug approvals (80-100), device clearances (60-79), minor approvals (40-59)
+- BEARISH: Class I recalls (80-100), safety alerts (60-79), minor recalls (40-59)
+- NEUTRAL: Routine updates (0-39)
+
+MARKET IMPACT GUIDELINES:
+- I use general terms like "positive catalyst", "negative pressure", "potential volatility"
+- I DO NOT include specific percentage predictions (no "15-30%" type predictions)
+- I focus on qualitative impact: "strong upward momentum", "downward pressure expected", "mixed market reaction likely"
+- I mention trading volume expectations: "increased trading activity expected", "sustained investor interest likely"
+
+RELEVANCE SCORING:
+- Drug approvals: 70-95 (high priority if novel/first-in-class)
+- Safety alerts: 75-95 (high priority for Class I recalls)
+- Device approvals: 50-80 (medium priority unless breakthrough technology)
+
+STOCK EXCHANGES: NYSE, NASDAQ, OTC, AMEX - I research and select correct exchange for each ticker.
+
+I return JSON array only without any additional text or formatting.`,
       messages: [
         {
           role: "user",
-          content: prompt
+          content: `Analyze these ${batchItems.length} FDA announcements:
+
+${announcements}`
         }
       ]
     });
 
     const response = message.content[0].text.trim();
-    
+
     // Parse and validate JSON response
     let analysisArray;
     try {
       // Remove any markdown code blocks if present
       const cleanResponse = response.replace(/```json\n?|\n?```/g, '').trim();
-      
+
       // Try to extract JSON if there's extra text
       const jsonMatch = cleanResponse.match(/\[[\s\S]*\]/);
       const jsonString = jsonMatch ? jsonMatch[0] : cleanResponse;
-      
+
       analysisArray = JSON.parse(jsonString);
     } catch (parseError) {
       console.error('JSON parsing failed:', parseError);
@@ -267,7 +319,7 @@ async function batchAnalyzeWithClaude(batchItems) {
 
   } catch (error) {
     console.error('Claude batch analysis error:', error);
-    
+
     // Return fallback analysis for each item
     return batchItems.map(item => getFallbackAnalysis(item.fda_announcements));
   }
@@ -337,7 +389,7 @@ Return JSON array only:`;
 // Validate and clean individual analysis results
 function validateAndCleanAnalysis(analysis, queueItem) {
   const announcement = queueItem.fda_announcements;
-  
+
   // Ensure required fields exist with proper types
   const validated = {
     fda_announcement_id: analysis.fda_announcement_id || announcement.id,
@@ -346,7 +398,7 @@ function validateAndCleanAnalysis(analysis, queueItem) {
     stock_exchange: analysis.stock_exchange && typeof analysis.stock_exchange === 'string'
       ? analysis.stock_exchange.toUpperCase() : null,
     relevance_score: Math.max(0, Math.min(100, parseInt(analysis.relevance_score) || 0)),
-    priority_level: ['high', 'medium', 'low'].includes(analysis.priority_level) 
+    priority_level: ['high', 'medium', 'low'].includes(analysis.priority_level)
       ? analysis.priority_level : 'medium',
     sentiment: ['bullish', 'bearish', 'neutral'].includes(analysis.sentiment)
       ? analysis.sentiment : 'neutral',
@@ -355,7 +407,7 @@ function validateAndCleanAnalysis(analysis, queueItem) {
       ? analysis.ai_summary.substring(0, 500) : `${announcement.announcement_type.replace('_', ' ')} from ${announcement.sponsor_name || 'company'}`,
     market_impact_assessment: typeof analysis.market_impact_assessment === 'string' && analysis.market_impact_assessment.length > 5
       ? analysis.market_impact_assessment.substring(0, 300) : 'Market impact requires further analysis',
-    tags: Array.isArray(analysis.tags) 
+    tags: Array.isArray(analysis.tags)
       ? analysis.tags.slice(0, 5).map(tag => String(tag).toLowerCase().replace(/\s+/g, '_'))
       : [announcement.announcement_type, 'fda', 'regulatory']
   };
@@ -374,21 +426,21 @@ function validateAndCleanAnalysis(analysis, queueItem) {
 async function saveBatchAnalysisResult(queueItem, analysis) {
   try {
     const announcement = queueItem.fda_announcements;
-    
+
     // Get the actual source_id from the announcement's source_id field
     const sourceId = announcement.source_id;
-    
+
     if (!sourceId) {
       throw new Error('No source_id found in announcement data');
     }
-    
+
     // Only save if relevance score meets threshold
     if (analysis.relevance_score < 30) {
       await updateQueueStatus(queueItem.id, 'completed');
-      return { 
-        success: true, 
-        published: false, 
-        reason: `Low relevance score: ${analysis.relevance_score}` 
+      return {
+        success: true,
+        published: false,
+        reason: `Low relevance score: ${analysis.relevance_score}`
       };
     }
 
@@ -417,12 +469,12 @@ async function saveBatchAnalysisResult(queueItem, analysis) {
 
     // Mark queue item as completed
     await updateQueueStatus(queueItem.id, 'completed');
-    
+
     console.log(`✓ Saved analysis for ${announcement.fda_id} (score: ${analysis.relevance_score}, ticker: ${analysis.stock_ticker || 'none'}, sentiment: ${analysis.sentiment} ${analysis.sentiment_strength}%)`);
-    
-    return { 
-      success: true, 
-      processedNewsId: data.id, 
+
+    return {
+      success: true,
+      processedNewsId: data.id,
       published: analysis.relevance_score >= 50,
       relevanceScore: analysis.relevance_score,
       sentiment: `${analysis.sentiment} (${analysis.sentiment_strength}%)`
@@ -445,7 +497,7 @@ function getFallbackAnalysis(announcement) {
 
   const fallbackPriority = {
     'drug_approval': 'high',
-    'safety_alert': 'high', 
+    'safety_alert': 'high',
     'device_approval': 'medium'
   };
 
@@ -486,7 +538,7 @@ async function updateQueueStatus(queueId, status, errorMessage = null) {
       .select('retry_count')
       .eq('id', queueId)
       .single();
-    
+
     if (currentItem) {
       updateData.retry_count = (currentItem.retry_count || 0) + 1;
     }

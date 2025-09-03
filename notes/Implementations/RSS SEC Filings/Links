@@ -1,0 +1,36 @@
+Latest Filings Received and Processed at the SEC RSS - https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&CIK=&type=&company=&dateb=&owner=include&start=0&count=40&output=atom
+
+
+Key Parameters:
+CIK: Company-specific ID.
+Type: Type of filing (blank = all types).
+Company: Company name filter.
+Dateb: Date filter.
+Owner: Include filings from insiders.
+Start: Starting point for results.
+Count: Number of results (40 filings).
+Output: Format of the feed (Atom format).
+
+
+Look out for:
+- Form 8-K for major events like mergers or leadership changes.
+- Form 4 for insider buying/selling, as it gives you insight into how executives feel about the stock.
+- Form S-1/S-3 for stock offerings that could lead to dilution and affect the stock price.
+- 10-Q and 10-K for financial updates and risk disclosures, particularly if they show deteriorating financial health.
+
+--------------------------------------------------------------------------------------------------------------
+
+
+
+I now want to setup a new source for fetching news which is from the SEC Rss feed. Below is the link for fetching the RSS Feed
+
+https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&CIK=&type=&company=&dateb=&owner=include&start=0&count=40&output=atom
+
+You are to create the necesarry process/ingest api routes and anything else needed to fetch data similar to how the fda process fetches and ingests data. Below are things the AI should look out for:
+
+Look out for:
+- Form 8-K for major events like mergers or leadership changes.
+- Form 4 for insider buying/selling, as it gives you insight into how executives feel about the stock.
+- Form S-1/S-3 for stock offerings that could lead to dilution and affect the stock price.
+- 10-Q and 10-K for financial updates and risk disclosures, particularly if they show deteriorating financial health.
+

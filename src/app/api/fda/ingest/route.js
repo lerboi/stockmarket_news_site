@@ -29,7 +29,7 @@ export async function POST(request) {
     if (!response.ok) {
       throw new Error(`FDA RSS endpoint failed: ${response.status}`);
     }
-    
+
     const result = await response.json();
     const rssData = result.success ? result.data : [];
 
@@ -47,7 +47,7 @@ export async function POST(request) {
 
     // AI Pre-Filter for Public Companies Only
     const publicCompanies = await filterPublicCompanies(rssData);
-    
+
     if (publicCompanies.length === 0) {
       return NextResponse.json({
         success: true,
@@ -108,8 +108,8 @@ export async function POST(request) {
   } catch (error) {
     console.error('FDA Multi-RSS Ingestion Error:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: error.message,
         timestamp: new Date().toISOString()
       },
@@ -265,7 +265,7 @@ async function filterPublicCompanies(rssData) {
         });
       });
 
-    const publicRSSData = rssData.filter(item => 
+    const publicRSSData = rssData.filter(item =>
       publicCompanyMap.has(item.id)
     );
 
@@ -288,32 +288,33 @@ async function filterPublicCompanies(rssData) {
 // Enhanced AI filtering with feed-type context
 async function aiFilterCompanyBatch(companyBatch) {
   try {
-    const companyList = companyBatch.map((company, index) => 
+    const companyList = companyBatch.map((company, index) =>
       `${index + 1}. RSS_ID: "${company.fda_id}", Company: "${company.company_name}", Type: ${company.announcement_type}, Source: ${company.source}, Title: "${company.title}"`
     ).join('\n');
 
-    const prompt = `Analyze these companies from FDA RSS feeds (Press Releases + MedWatch Alerts) for public trading status.
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1500,
+      temperature: 0.1,
+      system: `I analyze companies from FDA RSS feeds (Press Releases + MedWatch Alerts) for public trading status.
 
-CRITICAL: Return ONLY a valid JSON array with exactly ${companyBatch.length} objects.
+CRITICAL: I will return ONLY a valid JSON array with exactly the requested number of objects.
 
 Format: {"fda_id": "exact-id", "company_name": "name", "is_public": true/false, "ticker": "SYMBOL"/null, "exchange": "NYSE"/"NASDAQ"/"OTC"/null}
 
 Special considerations:
 - MedWatch alerts often mention smaller/generic manufacturers
 - Press releases typically feature larger pharma companies
-- Look for subsidiaries of major pharma companies
-- Include penny stocks (OTC markets)
+- I look for subsidiaries of major pharma companies
+- I include penny stocks (OTC markets)
 
-Companies:
-${companyList}
+I return JSON array only without any additional text or formatting.`,
+      messages: [{
+        role: "user",
+        content: `Analyze these ${companyBatch.length} companies for public trading status:
 
-Return JSON array only:`;
-
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1500,
-      temperature: 0.1,
-      messages: [{ role: "user", content: prompt }]
+${companyList}`
+      }]
     });
 
     const response = message.content[0].text.trim();

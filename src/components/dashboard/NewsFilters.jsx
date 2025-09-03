@@ -46,10 +46,18 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
 
   const categoryOptions = [
     { value: 'all', label: 'All Categories' },
+    // FDA Categories
     { value: 'drug_approval', label: 'Drug Approvals' },
     { value: 'safety_alert', label: 'Safety Alerts' },
     { value: 'device_approval', label: 'Device Approvals' },
-    { value: 'regulatory', label: 'Regulatory' }
+    { value: 'regulatory', label: 'FDA Regulatory' },
+    // SEC Categories  
+    { value: 'major_event', label: 'SEC Major Events' },
+    { value: 'merger_acquisition', label: 'M&A Filings' },
+    { value: 'insider_trading', label: 'Insider Trading' },
+    { value: 'stock_offering', label: 'Stock Offerings' },
+    { value: 'quarterly_report', label: 'Quarterly Reports' },
+    { value: 'annual_report', label: 'Annual Reports' }
   ];
 
   const sentimentOptions = [
@@ -59,8 +67,8 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
     { value: 'neutral', label: 'Neutral' }
   ];
 
-  // Updated timeframe options for multi-source RSS
   const timeframeOptions = [
+    { value: '1h', label: '1 Hour', description: 'Ultra-fast SEC filings & FDA alerts' },
     { value: '24h', label: '24 Hours', description: 'Breaking news & real-time alerts' },
     { value: '1w', label: '1 Week', description: 'Weekly market trends' },
     { value: '1m', label: '1 Month', description: 'Monthly analysis & patterns' }
@@ -188,6 +196,30 @@ export default function NewsFilters({ onFiltersChange, currentFilters }) {
                 className="text-xs bg-zinc-800/60 hover:bg-zinc-700/80 text-gray-300 hover:text-white px-3 py-2 rounded-full transition-all duration-200 border border-zinc-700/50 hover:border-zinc-600"
               >
                 Breaking News
+              </button>
+              <button
+                onClick={() => {
+                  handleFilterChange('category', 'insider_trading');
+                  handleFilterChange('priority', 'high');
+                }}
+                className="text-xs bg-zinc-800/60 hover:bg-zinc-700/80 text-gray-300 hover:text-white px-3 py-2 rounded-full transition-all duration-200 border border-zinc-700/50 hover:border-zinc-600"
+              >
+                Insider Trades
+              </button>
+              <button
+                onClick={() => {
+                  handleFilterChange('category', 'merger_acquisition');
+                  handleFilterChange('sentiment', 'bullish');
+                }}
+                className="text-xs bg-zinc-800/60 hover:bg-zinc-700/80 text-gray-300 hover:text-white px-3 py-2 rounded-full transition-all duration-200 border border-zinc-700/50 hover:border-zinc-600"
+              >
+                M&A Activity
+              </button>
+              <button
+                onClick={() => handleFilterChange('timeframe', '1h')}
+                className="text-xs bg-zinc-800/60 hover:bg-zinc-700/80 text-gray-300 hover:text-white px-3 py-2 rounded-full transition-all duration-200 border border-zinc-700/50 hover:border-zinc-600"
+              >
+                Ultra-Fast (1h)
               </button>
             </div>
           </div>

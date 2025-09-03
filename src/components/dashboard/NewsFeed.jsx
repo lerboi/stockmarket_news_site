@@ -51,7 +51,7 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
     }
   };
 
-  const triggerFDAPipeline = async (timeframe = '24h') => {
+  const triggerPipeline = async (timeframe = '24h') => {
     try {
       setTriggering(true);
       setError(null);
@@ -62,40 +62,38 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
         body: JSON.stringify({ 
           action: 'full', 
           limit: 15, 
-          timeframe: timeframe // Use timeframe instead of hours
+          timeframe: timeframe,
+          source: 'both' // This triggers both FDA and SEC
         })
       });
       
       const result = await response.json();
       
       if (result.success) {
-        console.log(`Multi-RSS Pipeline success:`, result.summary);
+        console.log(`Multi-Source Pipeline success:`, result.summary);
         
-        // Show success message with source breakdown
-        if (result.summary.ingested === 0) {
-          const timeLabel = timeframe === '24h' ? '24 hours' : timeframe === '1w' ? 'week' : 'month';
-          setError(`No new FDA announcements found in the last ${timeLabel}`);
+        // Show success message with both FDA and SEC breakdown
+        const fdaSummary = result.summary.fda || {};
+        const secSummary = result.summary.sec || {};
+        
+        if (result.summary.total_ingested === 0) {
+          const timeLabel = timeframe === '24h' ? '24 hours' : timeframe === '1w' ? 'week' : timeframe === '1h' ? 'hour' : 'month';
+          setError(`No new announcements found in the last ${timeLabel}`);
         } else {
-          // Show breakdown if available
-          const breakdown = result.summary.source_breakdown;
-          if (breakdown) {
-            const pressCount = breakdown['FDA Press Releases'] || 0;
-            const medwatchCount = breakdown['FDA MedWatch Alerts'] || 0;
-            console.log(`Source breakdown - Press Releases: ${pressCount}, MedWatch Alerts: ${medwatchCount}`);
-          }
+          console.log(`FDA: ${fdaSummary.ingested || 0} ingested, SEC: ${secSummary.ingested || 0} ingested`);
         }
         
-        // Wait a moment then refresh the news feed and stats
+        // Wait a moment then refresh
         setTimeout(() => {
-          fetchNews(); // This will trigger stats update via onStatsUpdate
+          fetchNews();
           setError(null);
         }, 3000);
       } else {
-        setError(`Multi-RSS Pipeline failed: ${result.error}`);
+        setError(`Pipeline failed: ${result.error}`);
       }
     } catch (err) {
-      setError('Failed to trigger FDA Multi-RSS pipeline');
-      console.error('Multi-RSS Pipeline trigger error:', err);
+      setError('Failed to trigger pipeline');
+      console.error('Pipeline trigger error:', err);
     } finally {
       setTriggering(false);
     }
@@ -207,7 +205,7 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
                 Multi-Source RSS Feed
               </span>
               <span className="text-sm text-gray-400">
-                Monitoring FDA Press Releases + MedWatch Alerts
+                Monitoring FDA (Press Releases + MedWatch) + SEC EDGAR Filings
               </span>
               {lastUpdate && (
                 <span className="text-xs text-gray-500">
@@ -242,9 +240,9 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
           <div className="bg-zinc-800 rounded-lg p-4 mb-6 text-left max-w-md mx-auto">
             <h4 className="text-sm font-medium text-white mb-2">Multi-Source Real-Time Process:</h4>
             <ul className="text-xs text-gray-400 space-y-1 list-disc list-inside">
-              <li>Parse FDA Press Releases RSS feed</li>
-              <li>Parse FDA MedWatch Safety Alerts RSS feed</li>
-              <li>Filter by timeframe (24h/1w/1m)</li>
+              <li>Parse FDA Press Releases & MedWatch Alerts RSS feeds</li>
+              <li>Parse SEC EDGAR filings RSS feed</li>
+              <li>Filter by timeframe (1h/24h/1w/1m)</li>
               <li>AI filter for publicly traded companies</li>
               <li>Real-time relevance scoring & sentiment analysis</li>
               <li>Multi-source breaking news alerts</li>
@@ -253,19 +251,21 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
 
           <div className="flex justify-center space-x-3 flex-wrap gap-2">
             <button
-              onClick={() => triggerFDAPipeline('24h')}
+              onClick={() => triggerPipeline('1h')}
               disabled={triggering}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded transition-colors disabled:opacity-50 font-medium"
             >
-              {triggering ? (
-                <>
-                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
-                  Processing...
-                </>
-              ) : (
-                'Last 24 Hours'
-              )}
+              {triggering ? 'Processing...' : 'Last Hour'}
             </button>
+
+            <button
+              onClick={() => triggerPipeline('24h')}
+              disabled={triggering}
+              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded transition-colors disabled:opacity-50 font-medium"
+            >
+              Last 24 Hours
+            </button>
+
             
             <button
               onClick={() => triggerFDAPipeline('1w')}
@@ -286,20 +286,20 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
             <button
               onClick={() => {
                 setNewsItems([{
-                  id: 'demo-multi-rss',
-                  title: 'Demo: FDA Breakthrough Drug Approval + MedWatch Safety Alert',
-                  summary: 'This demo shows multi-source RSS processing from both FDA Press Releases and MedWatch Alerts. Live data from both feeds will appear here within minutes of publication.',
+                  id: 'demo-multi-source',
+                  title: 'Demo: FDA Drug Approval + SEC 8-K Filing',
+                  summary: 'This demo shows multi-source processing from FDA RSS feeds and SEC EDGAR filings. Live data from both sources will appear here within minutes of publication.',
                   priority: 'high',
-                  category: 'drug_approval',
+                  category: 'major_event',
                   timestamp: 'Just now',
                   ticker: 'DEMO',
                   exchange: 'NASDAQ',
                   sentiment: 'bullish',
                   sentimentStrength: 85,
                   relevanceScore: 92,
-                  source: 'FDA Multi-RSS (Demo)',
-                  marketImpact: 'Expected immediate positive catalyst - breaking news from official FDA multi-source feeds.',
-                  tags: ['breaking_news', 'multi_source', 'drug_approval', 'real_time'],
+                  source: 'Multi-Source Intelligence (Demo)',
+                  marketImpact: 'Expected immediate positive catalyst - breaking news from official FDA and SEC feeds.',
+                  tags: ['breaking_news', 'multi_source', 'fda', 'sec', 'real_time'],
                   companyName: 'Demo Biotech Inc'
                 }]);
                 if (onStatsUpdate) {
@@ -398,7 +398,7 @@ export default function NewsFeed({ filters, onStatsUpdate }) {
       {newsItems.length > 0 && (
         <div className="text-center">
           <p className="text-xs text-gray-500">
-            Real-time updates from FDA Multi-RSS feeds (Press Releases + MedWatch Alerts) • Auto-refresh every 2 minutes • Configurable timeframes: 24h/1w/1m
+            Real-time updates from FDA Multi-RSS feeds + SEC EDGAR filings • Auto-refresh every 2 minutes • Ultra-fast timeframes: 1h/24h/1w/1m
           </p>
         </div>
       )}
